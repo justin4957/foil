@@ -39,7 +39,10 @@
 ////
 //// All types support JSON encoding/decoding for API communication.
 
+import anthropic/api
+import anthropic/client
 import anthropic/config
+import anthropic/testing
 import anthropic/types/error
 import anthropic/types/message
 import anthropic/types/request
@@ -284,3 +287,73 @@ pub const error_to_json = error.error_to_json
 pub const error_to_json_string = error.error_to_json_string
 
 pub const api_error_details_to_json = error.api_error_details_to_json
+
+// =============================================================================
+// Client (from anthropic/client)
+// =============================================================================
+
+// Re-export client type
+pub type Client =
+  client.Client
+
+// Re-export client constants
+pub const api_version = client.api_version
+
+pub const messages_endpoint = client.messages_endpoint
+
+// Re-export client constructors
+pub const new_client = client.new
+
+// Re-export HTTP functions
+pub const post_json = client.post_json
+
+pub const handle_response = client.handle_response
+
+pub const post_and_handle = client.post_and_handle
+
+// =============================================================================
+// API (from anthropic/api)
+// =============================================================================
+
+// Re-export create_message function
+pub const create_message = api.create_message
+
+// =============================================================================
+// Testing Utilities (from anthropic/testing)
+// =============================================================================
+
+// Re-export mock response builders
+pub const mock_text_response = testing.mock_text_response
+
+pub const mock_tool_use_response = testing.mock_tool_use_response
+
+pub const mock_error_response = testing.mock_error_response
+
+pub const mock_auth_error = testing.mock_auth_error
+
+pub const mock_rate_limit_error = testing.mock_rate_limit_error
+
+pub const mock_overloaded_error = testing.mock_overloaded_error
+
+pub const mock_invalid_request_error = testing.mock_invalid_request_error
+
+// Re-export mock body builders
+pub const mock_text_response_body = testing.mock_text_response_body
+
+pub const mock_tool_use_response_body = testing.mock_tool_use_response_body
+
+pub const mock_error_body = testing.mock_error_body
+
+// Re-export test fixtures
+pub const fixture_simple_response = testing.fixture_simple_response
+
+pub const fixture_conversation_response = testing.fixture_conversation_response
+
+pub const fixture_tool_use_response = testing.fixture_tool_use_response
+
+pub const fixture_max_tokens_response = testing.fixture_max_tokens_response
+
+pub const fixture_stop_sequence_response = testing.fixture_stop_sequence_response
+
+// Re-export integration test helpers
+pub const has_api_key = testing.has_api_key

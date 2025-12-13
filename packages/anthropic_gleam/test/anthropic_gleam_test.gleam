@@ -1195,3 +1195,264 @@ pub fn load_config_missing_api_key_error_test() {
 
   assert string.contains(reason, "API key")
 }
+
+// =============================================================================
+// Client Tests
+// =============================================================================
+
+import anthropic/client.{api_version, handle_response, messages_endpoint, new}
+import gleam/http/response
+
+pub fn client_new_test() {
+  set_env("ANTHROPIC_API_KEY", "test-key")
+  let assert Ok(config) = load_config(config_options())
+  let client = new(config)
+  assert client.config.api_key == "test-key"
+}
+
+pub fn client_api_version_test() {
+  assert api_version == "2023-06-01"
+}
+
+pub fn client_messages_endpoint_test() {
+  assert messages_endpoint == "/v1/messages"
+}
+
+pub fn handle_response_success_test() {
+  let resp = response.new(200) |> response.set_body("{\"id\":\"test\"}")
+  let result = handle_response(resp)
+  assert result == Ok("{\"id\":\"test\"}")
+}
+
+pub fn handle_response_400_test() {
+  let resp =
+    response.new(400)
+    |> response.set_body(
+      "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Bad request\"}}",
+    )
+  let assert Error(err) = handle_response(resp)
+  let assert ApiError(status_code: status, details: details) = err
+  assert status == 400
+  assert details.error_type == InvalidRequestError
+  assert details.message == "Bad request"
+}
+
+pub fn handle_response_401_test() {
+  let resp =
+    response.new(401)
+    |> response.set_body(
+      "{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"Invalid key\"}}",
+    )
+  let assert Error(err) = handle_response(resp)
+  let assert ApiError(status_code: status, details: details) = err
+  assert status == 401
+  assert details.error_type == AuthenticationError
+}
+
+pub fn handle_response_429_test() {
+  let resp =
+    response.new(429)
+    |> response.set_body(
+      "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Too many requests\"}}",
+    )
+  let assert Error(err) = handle_response(resp)
+  let assert ApiError(status_code: status, details: details) = err
+  assert status == 429
+  assert details.error_type == RateLimitError
+}
+
+pub fn handle_response_500_test() {
+  let resp =
+    response.new(500)
+    |> response.set_body(
+      "{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"Internal error\"}}",
+    )
+  let assert Error(err) = handle_response(resp)
+  let assert ApiError(status_code: status, details: _) = err
+  assert status == 500
+}
+
+pub fn handle_response_529_test() {
+  let resp =
+    response.new(529)
+    |> response.set_body(
+      "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}",
+    )
+  let assert Error(err) = handle_response(resp)
+  let assert ApiError(status_code: status, details: details) = err
+  assert status == 529
+  assert details.error_type == OverloadedError
+}
+
+pub fn handle_response_fallback_error_test() {
+  let resp = response.new(400) |> response.set_body("not json")
+  let assert Error(err) = handle_response(resp)
+  let assert ApiError(status_code: status, details: details) = err
+  assert status == 400
+  assert details.message == "not json"
+}
+
+// =============================================================================
+// API Validation Tests
+// =============================================================================
+
+import anthropic/api.{create_message}
+
+pub fn api_validation_empty_messages_test() {
+  set_env("ANTHROPIC_API_KEY", "test-key")
+  let assert Ok(config) = load_config(config_options())
+  let client = new(config)
+
+  let request = create_request("claude-sonnet-4-20250514", [], 1024)
+  let assert Error(err) = create_message(client, request)
+  let assert ApiError(_, details) = err
+  assert string.contains(details.message, "messages")
+}
+
+pub fn api_validation_empty_model_test() {
+  set_env("ANTHROPIC_API_KEY", "test-key")
+  let assert Ok(config) = load_config(config_options())
+  let client = new(config)
+
+  let request = create_request("", [user_message("Hello")], 1024)
+  let assert Error(err) = create_message(client, request)
+  let assert ApiError(_, details) = err
+  assert string.contains(details.message, "model")
+}
+
+pub fn api_validation_zero_max_tokens_test() {
+  set_env("ANTHROPIC_API_KEY", "test-key")
+  let assert Ok(config) = load_config(config_options())
+  let client = new(config)
+
+  let request =
+    create_request("claude-sonnet-4-20250514", [user_message("Hello")], 0)
+  let assert Error(err) = create_message(client, request)
+  let assert ApiError(_, details) = err
+  assert string.contains(details.message, "max_tokens")
+}
+
+// =============================================================================
+// Testing Module Tests
+// =============================================================================
+
+import anthropic/testing.{
+  fixture_conversation_response, fixture_max_tokens_response,
+  fixture_simple_response, fixture_stop_sequence_response,
+  fixture_tool_use_response, has_api_key, mock_auth_error, mock_error_body,
+  mock_error_response, mock_invalid_request_error, mock_overloaded_error,
+  mock_rate_limit_error, mock_text_response, mock_text_response_body,
+  mock_tool_use_response, mock_tool_use_response_body,
+}
+
+pub fn mock_text_response_test() {
+  let resp = mock_text_response("Hello, world!")
+  assert resp.status == 200
+  assert string.contains(resp.body, "Hello, world!")
+}
+
+pub fn mock_tool_use_response_test() {
+  let resp = mock_tool_use_response("tool_123", "get_weather", "{}")
+  assert resp.status == 200
+  assert string.contains(resp.body, "tool_123")
+  assert string.contains(resp.body, "get_weather")
+}
+
+pub fn mock_error_response_test() {
+  let resp = mock_error_response(400, "invalid_request_error", "Bad request")
+  assert resp.status == 400
+  assert string.contains(resp.body, "invalid_request_error")
+  assert string.contains(resp.body, "Bad request")
+}
+
+pub fn mock_auth_error_test() {
+  let resp = mock_auth_error()
+  assert resp.status == 401
+  assert string.contains(resp.body, "authentication_error")
+}
+
+pub fn mock_rate_limit_error_test() {
+  let resp = mock_rate_limit_error()
+  assert resp.status == 429
+  assert string.contains(resp.body, "rate_limit_error")
+}
+
+pub fn mock_overloaded_error_test() {
+  let resp = mock_overloaded_error()
+  assert resp.status == 529
+  assert string.contains(resp.body, "overloaded_error")
+}
+
+pub fn mock_invalid_request_error_test() {
+  let resp = mock_invalid_request_error("Missing field")
+  assert resp.status == 400
+  assert string.contains(resp.body, "Missing field")
+}
+
+pub fn mock_text_response_body_test() {
+  let body = mock_text_response_body("msg_123", "Hello!")
+  assert string.contains(body, "msg_123")
+  assert string.contains(body, "Hello!")
+  assert string.contains(body, "end_turn")
+}
+
+pub fn mock_tool_use_response_body_test() {
+  let body = mock_tool_use_response_body("msg_456", "tool_1", "search", "{}")
+  assert string.contains(body, "msg_456")
+  assert string.contains(body, "tool_1")
+  assert string.contains(body, "search")
+  assert string.contains(body, "tool_use")
+}
+
+pub fn mock_error_body_test() {
+  let body = mock_error_body("rate_limit_error", "Too fast")
+  assert string.contains(body, "rate_limit_error")
+  assert string.contains(body, "Too fast")
+}
+
+pub fn fixture_simple_response_test() {
+  let resp = fixture_simple_response()
+  assert resp.id == "msg_fixture_001"
+  assert resp.response_type == "message"
+  assert resp.stop_reason == Some(EndTurn)
+}
+
+pub fn fixture_conversation_response_test() {
+  let resp = fixture_conversation_response()
+  assert resp.id == "msg_fixture_002"
+  assert resp.usage.input_tokens == 150
+}
+
+pub fn fixture_tool_use_response_test() {
+  let resp = fixture_tool_use_response()
+  assert resp.id == "msg_fixture_003"
+  assert resp.stop_reason == Some(ToolUse)
+  assert list.length(resp.content) == 2
+}
+
+pub fn fixture_max_tokens_response_test() {
+  let resp = fixture_max_tokens_response()
+  assert resp.id == "msg_fixture_004"
+  assert resp.stop_reason == Some(MaxTokens)
+}
+
+pub fn fixture_stop_sequence_response_test() {
+  let resp = fixture_stop_sequence_response()
+  assert resp.id == "msg_fixture_005"
+  assert resp.stop_reason == Some(StopSequence)
+  assert resp.stop_sequence == Some("END")
+}
+
+pub fn has_api_key_with_key_set_test() {
+  // Set a key and verify has_api_key returns true
+  set_env("ANTHROPIC_API_KEY", "test-key-for-has-api-key")
+  let result = has_api_key()
+  assert result == True
+}
+
+pub fn has_api_key_without_key_test() {
+  // Clear the key and verify has_api_key returns false
+  set_env("ANTHROPIC_API_KEY", "")
+  let result = has_api_key()
+  assert result == False
+}
