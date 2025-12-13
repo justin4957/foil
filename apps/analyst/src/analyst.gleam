@@ -12,8 +12,8 @@
 //// 4. Suggest repairs to strengthen arguments
 
 import gleam/io
+import gleam/string
 import modal_logic/proposition
-import modal_logic/argument
 
 pub fn main() -> Nil {
   io.println("Modal Logic Analyst v0.1.0")
@@ -33,5 +33,6 @@ pub fn main() -> Nil {
   )
 
   io.println("")
-  io.debug(example_proposition)
+  io.println("Example proposition: rain -> []wet")
+  io.println(string.inspect(example_proposition))
 }

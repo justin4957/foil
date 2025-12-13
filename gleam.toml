@@ -1,6 +1,0 @@
-name = "modal_logic_engine"
-version = "0.1.0"
-
-# This is a Gleam workspace containing multiple packages
-[dependencies]
-gleam_stdlib = ">= 0.44.0 and < 2.0.0"

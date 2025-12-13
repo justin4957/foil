@@ -1,5 +1,6 @@
 //// Argument and formalization types
 
+import gleam/option.{type Option}
 import modal_logic/proposition.{type LogicSystem, type Proposition}
 
 /// A formalization of an argument in a specific logic system
