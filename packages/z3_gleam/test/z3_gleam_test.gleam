@@ -1,10 +1,19 @@
+import gleam/dict
+import gleam/json
+import gleam/list
+import gleam/option.{None, Some}
 import gleeunit
+import z3/compiler
+import z3/expr
+import z3/model
+import z3/solver
 import z3/types.{
   Add, And, ArraySort, BoolLit, BoolSort, BoolVal, Const, Div, Eq, Exists,
   ForAll, Ge, Gt, Iff, Implies, IntLit, IntSort, IntVal, Ite, Le, Lt, Mul, Neg,
   Not, Or, ParseError, PortError, RealLit, RealSort, RealVal, SolverError, Sub,
   TimeoutError, UninterpretedSort, UnknownVal,
 }
+import z3/unsat_core
 
 pub fn main() -> Nil {
   gleeunit.main()
@@ -559,4 +568,471 @@ pub fn ite_nested_test() {
     }
     _ -> panic as "Wrong expression structure"
   }
+}
+
+// =============================================================================
+// Expression Builder (expr) Module Tests
+// =============================================================================
+
+pub fn expr_int_const_test() {
+  let x = expr.int_const("x")
+  case x {
+    Const(name, IntSort) -> {
+      let assert True = name == "x"
+      Nil
+    }
+    _ -> panic as "Wrong expression type"
+  }
+}
+
+pub fn expr_bool_const_test() {
+  let p = expr.bool_const("p")
+  case p {
+    Const(name, BoolSort) -> {
+      let assert True = name == "p"
+      Nil
+    }
+    _ -> panic as "Wrong expression type"
+  }
+}
+
+pub fn expr_literals_test() {
+  let assert True = expr.int(42) == IntLit(42)
+  let assert True = expr.bool(True) == BoolLit(True)
+  let assert True = expr.true_() == BoolLit(True)
+  let assert True = expr.false_() == BoolLit(False)
+  let assert True = expr.real(3, 2) == RealLit(3, 2)
+}
+
+pub fn expr_and_test() {
+  let a = expr.bool_const("a")
+  let b = expr.bool_const("b")
+  let result = expr.and_([a, b])
+  case result {
+    And(exprs) -> {
+      let assert True = list.length(exprs) == 2
+      Nil
+    }
+    _ -> panic as "Wrong expression type"
+  }
+}
+
+pub fn expr_or_test() {
+  let a = expr.bool_const("a")
+  let b = expr.bool_const("b")
+  let result = expr.or_([a, b])
+  case result {
+    Or(exprs) -> {
+      let assert True = list.length(exprs) == 2
+      Nil
+    }
+    _ -> panic as "Wrong expression type"
+  }
+}
+
+pub fn expr_not_test() {
+  let a = expr.bool_const("a")
+  let result = expr.not_(a)
+  case result {
+    Not(inner) -> {
+      let assert True = inner == a
+      Nil
+    }
+    _ -> panic as "Wrong expression type"
+  }
+}
+
+pub fn expr_arithmetic_test() {
+  let x = expr.int_const("x")
+  let y = expr.int_const("y")
+
+  // Test add
+  case expr.add([x, y]) {
+    Add(exprs) -> {
+      let assert True = list.length(exprs) == 2
+      Nil
+    }
+    _ -> panic as "Expected Add expression"
+  }
+
+  // Test sub
+  case expr.sub(x, y) {
+    Sub(left, right) -> {
+      let assert True = left == x
+      let assert True = right == y
+      Nil
+    }
+    _ -> panic as "Expected Sub expression"
+  }
+
+  // Test mul
+  case expr.mul([x, y]) {
+    Mul(exprs) -> {
+      let assert True = list.length(exprs) == 2
+      Nil
+    }
+    _ -> panic as "Expected Mul expression"
+  }
+
+  // Test div
+  case expr.div(x, y) {
+    Div(num, denom) -> {
+      let assert True = num == x
+      let assert True = denom == y
+      Nil
+    }
+    _ -> panic as "Expected Div expression"
+  }
+}
+
+pub fn expr_comparisons_test() {
+  let x = expr.int_const("x")
+  let y = expr.int_const("y")
+
+  let assert True = expr.eq(x, y) == Eq(x, y)
+  let assert True = expr.lt(x, y) == Lt(x, y)
+  let assert True = expr.le(x, y) == Le(x, y)
+  let assert True = expr.gt(x, y) == Gt(x, y)
+  let assert True = expr.ge(x, y) == Ge(x, y)
+}
+
+pub fn expr_distinct_test() {
+  let a = expr.int_const("a")
+  let b = expr.int_const("b")
+  let c = expr.int_const("c")
+
+  let result = expr.distinct([a, b, c])
+  // distinct([a,b,c]) = (a != b) AND (a != c) AND (b != c)
+  case result {
+    And(_) -> Nil
+    _ -> panic as "Expected And expression for distinct"
+  }
+}
+
+pub fn expr_free_variables_test() {
+  let x = expr.int_const("x")
+  let y = expr.int_const("y")
+  let constraint = expr.add([x, y])
+
+  let vars = expr.free_variables(constraint)
+  let assert True = list.contains(vars, "x")
+  let assert True = list.contains(vars, "y")
+  let assert True = list.length(vars) == 2
+}
+
+pub fn expr_substitute_test() {
+  let x = expr.int_const("x")
+  let y = expr.int_const("y")
+  let constraint = expr.eq(x, expr.int(5))
+
+  let substituted = expr.substitute(constraint, "x", y)
+  let assert True = substituted == expr.eq(y, expr.int(5))
+}
+
+// =============================================================================
+// Solver Module Tests
+// =============================================================================
+
+pub fn solver_new_test() {
+  let assert Ok(s) = solver.new()
+  let assert True = solver.get_assertions(s) == []
+  let assert True = solver.scope_depth(s) == 0
+}
+
+pub fn solver_assert_test() {
+  let assert Ok(s) = solver.new()
+  let x = expr.int_const("x")
+  let constraint = expr.gt(x, expr.int(0))
+
+  let assert Ok(s) = solver.assert_(s, constraint)
+  let assertions = solver.get_assertions(s)
+  let assert True = list.length(assertions) == 1
+}
+
+pub fn solver_assert_all_test() {
+  let assert Ok(s) = solver.new()
+  let x = expr.int_const("x")
+  let y = expr.int_const("y")
+  let constraints = [
+    expr.gt(x, expr.int(0)),
+    expr.lt(y, expr.int(10)),
+  ]
+
+  let assert Ok(s) = solver.assert_all(s, constraints)
+  let assertions = solver.get_assertions(s)
+  let assert True = list.length(assertions) == 2
+}
+
+pub fn solver_push_pop_test() {
+  let assert Ok(s) = solver.new()
+  let x = expr.int_const("x")
+
+  let assert Ok(s) = solver.assert_(s, expr.gt(x, expr.int(0)))
+  let assert True = list.length(solver.get_assertions(s)) == 1
+
+  let assert Ok(s) = solver.push(s)
+  let assert True = solver.scope_depth(s) == 1
+
+  let assert Ok(s) = solver.assert_(s, expr.lt(x, expr.int(10)))
+  let assert True = list.length(solver.get_assertions(s)) == 2
+
+  let assert Ok(s) = solver.pop(s)
+  let assert True = solver.scope_depth(s) == 0
+  let assert True = list.length(solver.get_assertions(s)) == 1
+}
+
+pub fn solver_reset_test() {
+  let assert Ok(s) = solver.new()
+  let x = expr.int_const("x")
+
+  let assert Ok(s) = solver.assert_(s, expr.gt(x, expr.int(0)))
+  let assert Ok(s) = solver.push(s)
+  let assert Ok(s) = solver.reset(s)
+
+  let assert True = solver.get_assertions(s) == []
+  let assert True = solver.scope_depth(s) == 0
+}
+
+pub fn solver_check_empty_test() {
+  let assert Ok(s) = solver.new()
+  let assert Ok(#(_, result)) = solver.check(s)
+
+  case result {
+    solver.SolverSat(_) -> Nil
+    _ -> panic as "Empty solver should be SAT"
+  }
+}
+
+pub fn solver_named_assertions_test() {
+  let assert Ok(s) = solver.new()
+  let x = expr.int_const("x")
+
+  let assert Ok(s) = solver.assert_named(s, "c1", expr.gt(x, expr.int(0)))
+  let assert Ok(s) = solver.assert_named(s, "c2", expr.lt(x, expr.int(10)))
+
+  let named = solver.get_named_assertions(s)
+  let assert True = dict.size(named) == 2
+}
+
+// =============================================================================
+// Model Module Tests
+// =============================================================================
+
+pub fn model_empty_test() {
+  let m = model.empty()
+  let assert True = model.is_empty(m)
+  let assert True = model.size(m) == 0
+}
+
+pub fn model_from_list_test() {
+  let m =
+    model.from_list([
+      #("x", IntVal(42)),
+      #("y", IntVal(17)),
+    ])
+
+  let assert True = model.size(m) == 2
+  let assert Some(42) = model.get_int(m, "x")
+  let assert Some(17) = model.get_int(m, "y")
+}
+
+pub fn model_set_values_test() {
+  let m = model.empty()
+  let m = model.set_int(m, "x", 42)
+  let m = model.set_bool(m, "flag", True)
+  let m = model.set_real(m, "pi", 3.14)
+
+  let assert Some(42) = model.get_int(m, "x")
+  let assert Some(True) = model.get_bool(m, "flag")
+  let assert Some(_) = model.get_real(m, "pi")
+}
+
+pub fn model_get_variable_names_test() {
+  let m =
+    model.from_list([
+      #("a", IntVal(1)),
+      #("b", IntVal(2)),
+      #("c", IntVal(3)),
+    ])
+
+  let names = model.get_variable_names(m)
+  let assert True = list.length(names) == 3
+  let assert True = list.contains(names, "a")
+  let assert True = list.contains(names, "b")
+  let assert True = list.contains(names, "c")
+}
+
+pub fn model_has_variable_test() {
+  let m = model.from_list([#("x", IntVal(42))])
+
+  let assert True = model.has_variable(m, "x")
+  let assert False = model.has_variable(m, "y")
+}
+
+pub fn model_to_dict_test() {
+  let m =
+    model.from_list([
+      #("x", IntVal(1)),
+      #("y", IntVal(2)),
+    ])
+
+  let d = model.to_dict(m)
+  let assert True = dict.size(d) == 2
+  let assert Ok(IntVal(1)) = dict.get(d, "x")
+  let assert Ok(IntVal(2)) = dict.get(d, "y")
+}
+
+pub fn model_eval_test() {
+  let m =
+    model.from_list([
+      #("x", IntVal(5)),
+      #("y", IntVal(3)),
+    ])
+
+  // Simple evaluation
+  let x = expr.int_const("x")
+  let result = model.eval(m, x)
+  let assert True = result == IntLit(5)
+
+  // Arithmetic evaluation
+  let sum = expr.add([expr.int_const("x"), expr.int_const("y")])
+  let sum_result = model.eval(m, sum)
+  let assert True = sum_result == IntLit(8)
+}
+
+pub fn model_eval_comparison_test() {
+  let m =
+    model.from_list([
+      #("x", IntVal(10)),
+    ])
+
+  let x = expr.int_const("x")
+  let cmp = expr.gt(x, expr.int(5))
+  let result = model.eval(m, cmp)
+  let assert True = result == BoolLit(True)
+}
+
+// =============================================================================
+// Compiler Module Tests
+// =============================================================================
+
+pub fn compiler_compile_int_lit_test() {
+  let expr = IntLit(42)
+  let assert Ok(json_val) = compiler.compile(expr)
+  let json_str = json.to_string(json_val)
+  let assert True = json_str != ""
+}
+
+pub fn compiler_compile_bool_lit_test() {
+  let expr = BoolLit(True)
+  let assert Ok(json_val) = compiler.compile(expr)
+  let json_str = json.to_string(json_val)
+  let assert True = json_str != ""
+}
+
+pub fn compiler_compile_const_test() {
+  let expr = Const("x", IntSort)
+  let assert Ok(json_val) = compiler.compile(expr)
+  let json_str = json.to_string(json_val)
+  let assert True = json_str != ""
+}
+
+pub fn compiler_compile_and_test() {
+  let a = BoolLit(True)
+  let b = BoolLit(False)
+  let expr = And([a, b])
+  let assert Ok(json_val) = compiler.compile(expr)
+  let json_str = json.to_string(json_val)
+  let assert True = json_str != ""
+}
+
+pub fn compiler_compile_arithmetic_test() {
+  let x = Const("x", IntSort)
+  let y = Const("y", IntSort)
+  let expr = Add([x, y])
+  let assert Ok(json_val) = compiler.compile(expr)
+  let json_str = json.to_string(json_val)
+  let assert True = json_str != ""
+}
+
+pub fn compiler_extract_variables_test() {
+  let x = Const("x", IntSort)
+  let y = Const("y", IntSort)
+  let z = Const("z", BoolSort)
+
+  let expr = And([Gt(x, y), z])
+  let vars = compiler.extract_variables(expr)
+
+  let assert True = dict.size(vars) == 3
+  let assert Ok(IntSort) = dict.get(vars, "x")
+  let assert Ok(IntSort) = dict.get(vars, "y")
+  let assert Ok(BoolSort) = dict.get(vars, "z")
+}
+
+pub fn compiler_context_test() {
+  let ctx = compiler.new_context()
+  let ctx = compiler.add_variable(ctx, "x", IntSort)
+  let ctx = compiler.add_variable(ctx, "y", BoolSort)
+
+  let vars = compiler.get_variables(ctx)
+  let assert True = dict.size(vars) == 2
+
+  let assert Some(IntSort) = compiler.get_variable_sort(ctx, "x")
+  let assert Some(BoolSort) = compiler.get_variable_sort(ctx, "y")
+  let assert None = compiler.get_variable_sort(ctx, "z")
+}
+
+pub fn compiler_fresh_name_test() {
+  let ctx = compiler.new_context()
+  let #(name1, ctx) = compiler.fresh_name(ctx, "tmp")
+  let #(name2, _ctx) = compiler.fresh_name(ctx, "tmp")
+
+  let assert True = name1 == "tmp_0"
+  let assert True = name2 == "tmp_1"
+}
+
+pub fn compiler_compile_sort_test() {
+  let int_json = compiler.compile_sort(IntSort)
+  let assert True = json.to_string(int_json) == "\"int\""
+
+  let bool_json = compiler.compile_sort(BoolSort)
+  let assert True = json.to_string(bool_json) == "\"bool\""
+
+  let real_json = compiler.compile_sort(RealSort)
+  let assert True = json.to_string(real_json) == "\"real\""
+}
+
+// =============================================================================
+// Unsat Core Module Tests
+// =============================================================================
+
+pub fn unsat_core_auto_name_test() {
+  let name1 = unsat_core.auto_name("constraint", 0)
+  let name2 = unsat_core.auto_name("constraint", 5)
+
+  let assert True = name1 == "constraint_0"
+  let assert True = name2 == "constraint_5"
+}
+
+pub fn unsat_core_types_test() {
+  let core =
+    unsat_core.UnsatCore(assertion_names: ["c1", "c2", "c3"], is_minimal: False)
+
+  let assert True = unsat_core.core_size(core) == 3
+  let assert True = unsat_core.is_in_core(core, "c1")
+  let assert True = unsat_core.is_in_core(core, "c2")
+  let assert False = unsat_core.is_in_core(core, "c4")
+}
+
+pub fn unsat_core_format_test() {
+  let core = unsat_core.UnsatCore(assertion_names: ["a", "b"], is_minimal: True)
+
+  let formatted = unsat_core.format_core(core)
+  let assert True = formatted != ""
+}
+
+pub fn unsat_core_config_test() {
+  let config = unsat_core.core_extraction_config()
+  let assert Ok(s) = solver.new_with_config(config)
+  let assert True = unsat_core.is_core_enabled(s)
 }
