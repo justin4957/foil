@@ -31,8 +31,17 @@ import anthropic/types/request.{
   response_has_tool_use, response_text, response_to_json,
   response_to_json_string, stop_reason_from_string, stop_reason_to_json,
   stop_reason_to_string, usage, usage_to_json, with_metadata,
-  with_stop_sequences, with_stream, with_system, with_temperature, with_top_k,
-  with_top_p, with_user_id,
+  with_stop_sequences, with_stream, with_system, with_temperature,
+  with_tool_choice, with_tools, with_tools_and_choice, with_top_k, with_top_p,
+  with_user_id,
+}
+import anthropic/types/tool.{
+  type ToolCall, Any, Auto, NoTool, ToolFailure, ToolName, ToolSuccess,
+  array_property, auto_choice, empty_input_schema, enum_property, input_schema,
+  input_schema_to_json, no_tool_choice, object_property, property,
+  property_schema_to_json, property_with_description, tool, tool_call,
+  tool_choice_to_json, tool_failure, tool_name_choice, tool_success,
+  tool_to_json, tool_to_json_string, tool_with_description, tools_to_json,
 }
 import gleam/erlang/charlist
 import gleam/json
@@ -2181,4 +2190,652 @@ pub fn handler_has_error_false_test() {
     MessageStopEvent,
   ]
   assert stream_has_error(events) == False
+}
+
+// =============================================================================
+// Tool Types Tests (Issue #13)
+// =============================================================================
+
+pub fn property_simple_test() {
+  let prop = property("string")
+  assert prop.property_type == "string"
+  assert prop.description == None
+  assert prop.enum_values == None
+}
+
+pub fn property_with_description_test() {
+  let prop = property_with_description("string", "A location")
+  assert prop.property_type == "string"
+  assert prop.description == Some("A location")
+}
+
+pub fn enum_property_test() {
+  let prop = enum_property(Some("Temperature unit"), ["celsius", "fahrenheit"])
+  assert prop.property_type == "string"
+  assert prop.enum_values == Some(["celsius", "fahrenheit"])
+}
+
+pub fn array_property_test() {
+  let item_schema = property("string")
+  let prop = array_property(Some("List of items"), item_schema)
+  assert prop.property_type == "array"
+  assert prop.items != None
+}
+
+pub fn object_property_test() {
+  let props = [#("name", property("string"))]
+  let prop = object_property(Some("A person"), props, ["name"])
+  assert prop.property_type == "object"
+  assert prop.properties == Some(props)
+  assert prop.required == Some(["name"])
+}
+
+pub fn property_schema_to_json_test() {
+  let prop = property_with_description("string", "A description")
+  let json_str = property_schema_to_json(prop) |> json.to_string
+  assert string.contains(json_str, "\"type\":\"string\"")
+  assert string.contains(json_str, "\"description\":\"A description\"")
+}
+
+pub fn input_schema_empty_test() {
+  let schema = empty_input_schema()
+  assert schema.schema_type == "object"
+  assert schema.properties == None
+  assert schema.required == None
+}
+
+pub fn input_schema_with_properties_test() {
+  let props = [#("location", property_with_description("string", "City name"))]
+  let schema = input_schema(props, ["location"])
+  assert schema.schema_type == "object"
+  assert schema.properties != None
+  assert schema.required == Some(["location"])
+}
+
+pub fn input_schema_to_json_test() {
+  let props = [#("location", property("string"))]
+  let schema = input_schema(props, ["location"])
+  let json_str = input_schema_to_json(schema) |> json.to_string
+  assert string.contains(json_str, "\"type\":\"object\"")
+  assert string.contains(json_str, "\"properties\"")
+  assert string.contains(json_str, "\"required\"")
+}
+
+pub fn tool_simple_test() {
+  let t = tool("get_time", empty_input_schema())
+  assert t.name == "get_time"
+  assert t.description == None
+}
+
+pub fn tool_with_description_test() {
+  let t =
+    tool_with_description("get_time", "Get current time", empty_input_schema())
+  assert t.name == "get_time"
+  assert t.description == Some("Get current time")
+}
+
+pub fn tool_to_json_test() {
+  let t =
+    tool_with_description("get_weather", "Get weather", empty_input_schema())
+  let json_str = tool_to_json(t) |> json.to_string
+  assert string.contains(json_str, "\"name\":\"get_weather\"")
+  assert string.contains(json_str, "\"description\":\"Get weather\"")
+  assert string.contains(json_str, "\"input_schema\"")
+}
+
+pub fn tool_to_json_string_test() {
+  let t = tool("my_tool", empty_input_schema())
+  let json_str = tool_to_json_string(t)
+  assert string.contains(json_str, "\"name\":\"my_tool\"")
+}
+
+pub fn tools_to_json_test() {
+  let t1 = tool("tool1", empty_input_schema())
+  let t2 = tool("tool2", empty_input_schema())
+  let json_str = tools_to_json([t1, t2]) |> json.to_string
+  assert string.contains(json_str, "\"name\":\"tool1\"")
+  assert string.contains(json_str, "\"name\":\"tool2\"")
+}
+
+// =============================================================================
+// Tool Choice Tests
+// =============================================================================
+
+pub fn tool_choice_auto_test() {
+  let choice = Auto
+  let json_str = tool_choice_to_json(choice) |> json.to_string
+  assert string.contains(json_str, "\"type\":\"auto\"")
+}
+
+pub fn tool_choice_any_test() {
+  let choice = Any
+  let json_str = tool_choice_to_json(choice) |> json.to_string
+  assert string.contains(json_str, "\"type\":\"any\"")
+}
+
+pub fn tool_choice_none_test() {
+  let choice = NoTool
+  let json_str = tool_choice_to_json(choice) |> json.to_string
+  assert string.contains(json_str, "\"type\":\"none\"")
+}
+
+pub fn tool_choice_specific_test() {
+  let choice = ToolName(name: "get_weather")
+  let json_str = tool_choice_to_json(choice) |> json.to_string
+  assert string.contains(json_str, "\"type\":\"tool\"")
+  assert string.contains(json_str, "\"name\":\"get_weather\"")
+}
+
+pub fn auto_choice_test() {
+  let choice = auto_choice()
+  assert choice == Auto
+}
+
+pub fn tool_name_choice_test() {
+  let choice = tool_name_choice("my_tool")
+  assert choice == ToolName(name: "my_tool")
+}
+
+pub fn no_tool_choice_test() {
+  let choice = no_tool_choice()
+  assert choice == NoTool
+}
+
+// =============================================================================
+// Tool Call and Result Tests
+// =============================================================================
+
+pub fn tool_call_test() {
+  let call = tool_call("id_123", "get_weather", "{\"location\": \"Paris\"}")
+  assert call.id == "id_123"
+  assert call.name == "get_weather"
+  assert call.input == "{\"location\": \"Paris\"}"
+}
+
+pub fn tool_success_test() {
+  let result = tool_success("id_123", "Sunny, 25C")
+  let assert ToolSuccess(tool_use_id, content) = result
+  assert tool_use_id == "id_123"
+  assert content == "Sunny, 25C"
+}
+
+pub fn tool_failure_test() {
+  let result = tool_failure("id_123", "Location not found")
+  let assert ToolFailure(tool_use_id, error) = result
+  assert tool_use_id == "id_123"
+  assert error == "Location not found"
+}
+
+// =============================================================================
+// Request with Tools Tests (Issue #14)
+// =============================================================================
+
+pub fn request_with_tools_test() {
+  let t = tool("get_weather", empty_input_schema())
+  let req =
+    create_request("claude-3-5-haiku-20241022", [user_message("Hello")], 100)
+    |> with_tools([t])
+
+  assert req.tools == Some([t])
+}
+
+pub fn request_with_tool_choice_test() {
+  let req =
+    create_request("claude-3-5-haiku-20241022", [user_message("Hello")], 100)
+    |> with_tool_choice(Auto)
+
+  assert req.tool_choice == Some(Auto)
+}
+
+pub fn request_with_tools_and_choice_test() {
+  let t = tool("get_weather", empty_input_schema())
+  let req =
+    create_request("claude-3-5-haiku-20241022", [user_message("Hello")], 100)
+    |> with_tools_and_choice([t], Any)
+
+  assert req.tools == Some([t])
+  assert req.tool_choice == Some(Any)
+}
+
+pub fn request_with_tools_to_json_test() {
+  let t =
+    tool_with_description("get_weather", "Get weather", empty_input_schema())
+  let req =
+    create_request("claude-3-5-haiku-20241022", [user_message("Hello")], 100)
+    |> with_tools([t])
+    |> with_tool_choice(Auto)
+
+  let json_str = request_to_json_string(req)
+  assert string.contains(json_str, "\"tools\"")
+  assert string.contains(json_str, "\"name\":\"get_weather\"")
+  assert string.contains(json_str, "\"tool_choice\"")
+  assert string.contains(json_str, "\"type\":\"auto\"")
+}
+
+// =============================================================================
+// Tool Use Response Tests (Issue #15)
+// =============================================================================
+
+import anthropic/tools.{
+  build_continuation_messages, build_tool_result_messages, count_tool_calls,
+  create_tool_result_message, dispatch_tool_call, dispatch_tool_calls,
+  execute_tool_calls, extract_tool_calls, failure_for_call, get_first_tool_call,
+  get_tool_call_by_id, get_tool_calls_by_name, get_tool_names, has_tool_call,
+  needs_tool_execution, success_for_call, tool_result_to_content_block,
+}
+
+fn create_tool_use_response() -> request.CreateMessageResponse {
+  create_response(
+    "msg_123",
+    [
+      ToolUseBlock(
+        id: "toolu_1",
+        name: "get_weather",
+        input: "{\"location\":\"Paris\"}",
+      ),
+      TextBlock(text: "Let me check the weather."),
+      ToolUseBlock(id: "toolu_2", name: "get_time", input: "{}"),
+    ],
+    "claude-3-5-haiku-20241022",
+    Some(ToolUse),
+    usage(10, 20),
+  )
+}
+
+pub fn needs_tool_execution_true_test() {
+  let response = create_tool_use_response()
+  assert needs_tool_execution(response) == True
+}
+
+pub fn needs_tool_execution_false_test() {
+  let response =
+    create_response(
+      "msg_123",
+      [TextBlock(text: "Hello!")],
+      "claude-3-5-haiku-20241022",
+      Some(EndTurn),
+      usage(10, 20),
+    )
+  assert needs_tool_execution(response) == False
+}
+
+pub fn extract_tool_calls_test() {
+  let response = create_tool_use_response()
+  let calls = extract_tool_calls(response)
+  assert list.length(calls) == 2
+
+  let assert [first, second] = calls
+  assert first.id == "toolu_1"
+  assert first.name == "get_weather"
+  assert second.id == "toolu_2"
+  assert second.name == "get_time"
+}
+
+pub fn get_tool_call_by_id_found_test() {
+  let response = create_tool_use_response()
+  let result = get_tool_call_by_id(response, "toolu_1")
+  let assert Ok(call) = result
+  assert call.name == "get_weather"
+}
+
+pub fn get_tool_call_by_id_not_found_test() {
+  let response = create_tool_use_response()
+  let result = get_tool_call_by_id(response, "nonexistent")
+  assert result == Error(Nil)
+}
+
+pub fn get_tool_calls_by_name_test() {
+  let response = create_tool_use_response()
+  let calls = get_tool_calls_by_name(response, "get_weather")
+  assert list.length(calls) == 1
+  let assert [call] = calls
+  assert call.id == "toolu_1"
+}
+
+pub fn get_first_tool_call_test() {
+  let response = create_tool_use_response()
+  let result = get_first_tool_call(response)
+  let assert Ok(call) = result
+  assert call.id == "toolu_1"
+}
+
+pub fn count_tool_calls_test() {
+  let response = create_tool_use_response()
+  assert count_tool_calls(response) == 2
+}
+
+pub fn get_tool_names_test() {
+  let response = create_tool_use_response()
+  let names = get_tool_names(response)
+  assert list.contains(names, "get_weather")
+  assert list.contains(names, "get_time")
+}
+
+pub fn has_tool_call_true_test() {
+  let response = create_tool_use_response()
+  assert has_tool_call(response, "get_weather") == True
+}
+
+pub fn has_tool_call_false_test() {
+  let response = create_tool_use_response()
+  assert has_tool_call(response, "nonexistent") == False
+}
+
+// =============================================================================
+// Tool Result Submission Tests (Issue #16)
+// =============================================================================
+
+pub fn tool_result_to_content_block_success_test() {
+  let result = tool_success("id_1", "Sunny, 25C")
+  let block = tool_result_to_content_block(result)
+  let assert ToolResultBlock(tool_use_id, content, is_error) = block
+  assert tool_use_id == "id_1"
+  assert content == "Sunny, 25C"
+  assert is_error == None
+}
+
+pub fn tool_result_to_content_block_failure_test() {
+  let result = tool_failure("id_1", "Error occurred")
+  let block = tool_result_to_content_block(result)
+  let assert ToolResultBlock(tool_use_id, content, is_error) = block
+  assert tool_use_id == "id_1"
+  assert content == "Error occurred"
+  assert is_error == Some(True)
+}
+
+pub fn create_tool_result_message_test() {
+  let results = [
+    tool_success("id_1", "Result 1"),
+    tool_failure("id_2", "Error 2"),
+  ]
+  let msg = create_tool_result_message(results)
+  assert msg.role == User
+  assert list.length(msg.content) == 2
+}
+
+pub fn build_tool_result_messages_test() {
+  let original = [user_message("What's the weather?")]
+  let response = create_tool_use_response()
+  let results = [tool_success("toolu_1", "Sunny")]
+
+  let messages = build_tool_result_messages(original, response, results)
+  assert list.length(messages) == 3
+  // Original user message
+  let assert [first, second, third] = messages
+  assert first.role == User
+  // Assistant response with tool use
+  assert second.role == Assistant
+  // User tool results
+  assert third.role == User
+}
+
+pub fn build_continuation_messages_test() {
+  let response = create_tool_use_response()
+  let results = [tool_success("toolu_1", "Sunny")]
+
+  let messages = build_continuation_messages(response, results)
+  assert list.length(messages) == 2
+  let assert [first, second] = messages
+  assert first.role == Assistant
+  assert second.role == User
+}
+
+pub fn success_for_call_test() {
+  let call = tool_call("id_1", "tool", "{}")
+  let result = success_for_call(call, "Success content")
+  let assert ToolSuccess(tool_use_id, content) = result
+  assert tool_use_id == "id_1"
+  assert content == "Success content"
+}
+
+pub fn failure_for_call_test() {
+  let call = tool_call("id_1", "tool", "{}")
+  let result = failure_for_call(call, "Error message")
+  let assert ToolFailure(tool_use_id, error) = result
+  assert tool_use_id == "id_1"
+  assert error == "Error message"
+}
+
+pub fn execute_tool_calls_test() {
+  let calls = [
+    tool_call("id_1", "tool1", "{}"),
+    tool_call("id_2", "tool2", "{}"),
+  ]
+
+  let handler = fn(call: ToolCall) {
+    case call.name {
+      "tool1" -> Ok("Result 1")
+      _ -> Error("Unknown tool")
+    }
+  }
+
+  let results = execute_tool_calls(calls, handler)
+  assert list.length(results) == 2
+
+  let assert [first, second] = results
+  let assert ToolSuccess(_, content) = first
+  assert content == "Result 1"
+
+  let assert ToolFailure(_, error) = second
+  assert error == "Unknown tool"
+}
+
+pub fn dispatch_tool_call_found_test() {
+  let call = tool_call("id_1", "get_weather", "{}")
+  let handlers = [
+    #("get_weather", fn(_input: String) { Ok("Sunny") }),
+    #("get_time", fn(_input: String) { Ok("12:00") }),
+  ]
+
+  let result = dispatch_tool_call(call, handlers)
+  let assert ToolSuccess(_, content) = result
+  assert content == "Sunny"
+}
+
+pub fn dispatch_tool_call_not_found_test() {
+  let call = tool_call("id_1", "unknown_tool", "{}")
+  let handlers = [#("get_weather", fn(_input: String) { Ok("Sunny") })]
+
+  let result = dispatch_tool_call(call, handlers)
+  let assert ToolFailure(_, error) = result
+  assert string.contains(error, "Unknown tool")
+}
+
+pub fn dispatch_tool_calls_test() {
+  let calls = [
+    tool_call("id_1", "get_weather", "{}"),
+    tool_call("id_2", "get_time", "{}"),
+  ]
+  let handlers = [
+    #("get_weather", fn(_input: String) { Ok("Sunny") }),
+    #("get_time", fn(_input: String) { Ok("12:00") }),
+  ]
+
+  let results = dispatch_tool_calls(calls, handlers)
+  assert list.length(results) == 2
+
+  let assert [first, second] = results
+  let assert ToolSuccess(_, c1) = first
+  assert c1 == "Sunny"
+  let assert ToolSuccess(_, c2) = second
+  assert c2 == "12:00"
+}
+
+// =============================================================================
+// Tool Builder Tests (Issue #17)
+// =============================================================================
+
+import anthropic/tools/builder.{
+  add_boolean_param, add_enum_param, add_integer_param, add_number_param,
+  add_object_param, add_string_array_param, add_string_param, build,
+  build_simple, build_validated, tool_builder, tool_builder_with_description,
+  with_description as builder_with_description,
+}
+
+pub fn tool_builder_simple_test() {
+  let t =
+    tool_builder("get_time")
+    |> build_simple
+
+  assert t.name == "get_time"
+  assert t.description == None
+  assert t.input_schema.properties == None
+}
+
+pub fn tool_builder_with_description_init_test() {
+  let t =
+    tool_builder_with_description("get_time", "Get current time")
+    |> build_simple
+
+  assert t.name == "get_time"
+  assert t.description == Some("Get current time")
+}
+
+pub fn tool_builder_add_description_test() {
+  let t =
+    tool_builder("get_time")
+    |> builder_with_description("Get current time")
+    |> build_simple
+
+  assert t.description == Some("Get current time")
+}
+
+pub fn tool_builder_string_param_test() {
+  let t =
+    tool_builder("get_weather")
+    |> add_string_param("location", "City name", True)
+    |> build
+
+  assert t.input_schema.properties != None
+  assert t.input_schema.required == Some(["location"])
+}
+
+pub fn tool_builder_number_param_test() {
+  let t =
+    tool_builder("calculate")
+    |> add_number_param("value", "A number", True)
+    |> build
+
+  let assert Some(props) = t.input_schema.properties
+  let assert [#("value", prop)] = props
+  assert prop.property_type == "number"
+}
+
+pub fn tool_builder_integer_param_test() {
+  let t =
+    tool_builder("count")
+    |> add_integer_param("count", "An integer", True)
+    |> build
+
+  let assert Some(props) = t.input_schema.properties
+  let assert [#("count", prop)] = props
+  assert prop.property_type == "integer"
+}
+
+pub fn tool_builder_boolean_param_test() {
+  let t =
+    tool_builder("toggle")
+    |> add_boolean_param("enabled", "Enable feature", False)
+    |> build
+
+  let assert Some(props) = t.input_schema.properties
+  let assert [#("enabled", prop)] = props
+  assert prop.property_type == "boolean"
+  assert t.input_schema.required == None
+}
+
+pub fn tool_builder_enum_param_test() {
+  let t =
+    tool_builder("get_weather")
+    |> add_enum_param(
+      "unit",
+      "Temperature unit",
+      ["celsius", "fahrenheit"],
+      False,
+    )
+    |> build
+
+  let assert Some(props) = t.input_schema.properties
+  let assert [#("unit", prop)] = props
+  assert prop.property_type == "string"
+  assert prop.enum_values == Some(["celsius", "fahrenheit"])
+}
+
+pub fn tool_builder_string_array_param_test() {
+  let t =
+    tool_builder("search")
+    |> add_string_array_param("keywords", "Search keywords", "A keyword", True)
+    |> build
+
+  let assert Some(props) = t.input_schema.properties
+  let assert [#("keywords", prop)] = props
+  assert prop.property_type == "array"
+  assert prop.items != None
+}
+
+pub fn tool_builder_object_param_test() {
+  let nested = [#("street", property("string")), #("city", property("string"))]
+  let t =
+    tool_builder("set_address")
+    |> add_object_param(
+      "address",
+      "Address object",
+      nested,
+      ["street", "city"],
+      True,
+    )
+    |> build
+
+  let assert Some(props) = t.input_schema.properties
+  let assert [#("address", prop)] = props
+  assert prop.property_type == "object"
+  assert prop.properties != None
+}
+
+pub fn tool_builder_multiple_params_test() {
+  let t =
+    tool_builder("get_weather")
+    |> builder_with_description("Get weather for a location")
+    |> add_string_param("location", "City name", True)
+    |> add_enum_param(
+      "unit",
+      "Temperature unit",
+      ["celsius", "fahrenheit"],
+      False,
+    )
+    |> build
+
+  let assert Some(props) = t.input_schema.properties
+  assert list.length(props) == 2
+  assert t.input_schema.required == Some(["location"])
+}
+
+pub fn tool_builder_to_json_test() {
+  let t =
+    tool_builder("get_weather")
+    |> builder_with_description("Get weather")
+    |> add_string_param("location", "City name", True)
+    |> build
+
+  let json_str = tool_to_json_string(t)
+  assert string.contains(json_str, "\"name\":\"get_weather\"")
+  assert string.contains(json_str, "\"description\":\"Get weather\"")
+  assert string.contains(json_str, "\"location\"")
+  assert string.contains(json_str, "\"required\"")
+}
+
+pub fn tool_builder_validated_success_test() {
+  let result =
+    tool_builder("valid_name")
+    |> build_validated
+
+  assert result != Error(builder.EmptyName)
+}
+
+pub fn tool_builder_validated_empty_name_test() {
+  let result =
+    tool_builder("")
+    |> build_validated
+
+  assert result == Error(builder.EmptyName)
 }
