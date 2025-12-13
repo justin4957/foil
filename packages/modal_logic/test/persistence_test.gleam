@@ -7,16 +7,10 @@ import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
-import modal_logic/argument.{
-  type Argument, type Formalization, type ValidationResult, Argument,
-  Formalization, Invalid, Valid,
-}
+import modal_logic/argument.{Argument, Formalization, Invalid, Valid}
 import modal_logic/cache
 import modal_logic/graph
-import modal_logic/proposition.{
-  type LogicSystem, type Proposition, And, Atom, Implies, K, Necessary, Not, Or,
-  Possible, S4, S5, T,
-}
+import modal_logic/proposition.{And, Atom, Implies, K, Necessary, Possible, S4, S5, T}
 import modal_logic/repository
 
 pub fn main() {
@@ -110,13 +104,13 @@ fn test_repository_sql() {
     "     Length: " <> int_to_string(string.length(insert_sql)) <> " chars",
   )
 
-  let select_sql = repository.build_select_argument_sql()
+  let _select_sql = repository.build_select_argument_sql()
   io.println("[OK] Select argument SQL generated")
 
-  let insert_form_sql = repository.build_insert_formalization_sql()
+  let _insert_form_sql = repository.build_insert_formalization_sql()
   io.println("[OK] Insert formalization SQL generated")
 
-  let insert_validation_sql = repository.build_insert_validation_sql()
+  let _insert_validation_sql = repository.build_insert_validation_sql()
   io.println("[OK] Insert validation SQL generated")
 
   // Test filtered query
@@ -137,11 +131,11 @@ fn test_repository_sql() {
   )
 
   // Test batch insert
-  let batch_sql = repository.build_batch_insert_arguments_sql(5)
+  let _batch_sql = repository.build_batch_insert_arguments_sql(5)
   io.println("[OK] Batch insert SQL for 5 arguments generated")
 
   // Test statistics queries
-  let stats_sql = repository.build_argument_stats_sql()
+  let _stats_sql = repository.build_argument_stats_sql()
   io.println("[OK] Statistics query generated")
 
   io.println("")
@@ -204,8 +198,8 @@ fn test_cache_operations() {
   // Test normalization
   let p1 = And(Atom("P"), Atom("Q"))
   let p2 = And(Atom("Q"), Atom("P"))
-  let norm1 = cache.normalize_proposition(p1)
-  let norm2 = cache.normalize_proposition(p2)
+  let _norm1 = cache.normalize_proposition(p1)
+  let _norm2 = cache.normalize_proposition(p2)
   io.println("[OK] Proposition normalization tested")
 
   // Test Redis command builders
@@ -345,10 +339,10 @@ fn test_graph_queries() {
   )
 
   // Test SQL builders
-  let similar_sql = graph.build_similar_formalizations_sql()
+  let _similar_sql = graph.build_similar_formalizations_sql()
   io.println("[OK] Similar formalizations SQL generated")
 
-  let rel_sql = graph.build_argument_relationships_sql()
+  let _rel_sql = graph.build_argument_relationships_sql()
   io.println("[OK] Argument relationships SQL generated")
 
   io.println("")

@@ -18,8 +18,6 @@
 //// let cached = cache.get_validation(cache_store, key)
 //// ```
 
-import gleam/bit_array
-import gleam/crypto
 import gleam/dict.{type Dict}
 import gleam/list
 import gleam/order
@@ -572,17 +570,66 @@ fn evict_oldest(cache: MemoryCache) -> MemoryCache {
   }
 }
 
+/// Simple DJB2 hash function for cache keys
+/// This doesn't need cryptographic security - just consistent key generation
 fn hash_string(s: String) -> String {
-  s
-  |> bit_array.from_string
-  |> crypto.hash(crypto.Sha256, _)
-  |> bytes_to_hex
+  let hash_value = djb2_hash(s)
+  int_to_hex(hash_value)
 }
 
-fn bytes_to_hex(bytes: BitArray) -> String {
-  bytes
-  |> bit_array.base16_encode
-  |> string.lowercase
+/// DJB2 hash algorithm
+fn djb2_hash(s: String) -> Int {
+  s
+  |> string.to_utf_codepoints
+  |> list.fold(5381, fn(hash, codepoint) {
+    let char_code = string.utf_codepoint_to_int(codepoint)
+    // hash * 33 + char_code, with wrapping to prevent overflow
+    { { hash * 33 } % 0xFFFFFFFF + char_code } % 0xFFFFFFFF
+  })
+}
+
+/// Convert an integer to hexadecimal string
+fn int_to_hex(n: Int) -> String {
+  do_int_to_hex(abs_int(n), "")
+}
+
+fn do_int_to_hex(n: Int, acc: String) -> String {
+  case n {
+    0 ->
+      case acc {
+        "" -> "0"
+        _ -> acc
+      }
+    _ -> {
+      let digit = n % 16
+      let char = case digit {
+        0 -> "0"
+        1 -> "1"
+        2 -> "2"
+        3 -> "3"
+        4 -> "4"
+        5 -> "5"
+        6 -> "6"
+        7 -> "7"
+        8 -> "8"
+        9 -> "9"
+        10 -> "a"
+        11 -> "b"
+        12 -> "c"
+        13 -> "d"
+        14 -> "e"
+        _ -> "f"
+      }
+      do_int_to_hex(n / 16, char <> acc)
+    }
+  }
+}
+
+fn abs_int(n: Int) -> Int {
+  case n < 0 {
+    True -> -n
+    False -> n
+  }
 }
 
 fn compare_propositions(a: Proposition, b: Proposition) -> order.Order {
