@@ -136,15 +136,19 @@ fn response_decoder() -> decode.Decoder(CreateMessageResponse) {
   use content <- decode.field("content", decode.list(content_block_decoder()))
   use model <- decode.field("model", decode.string)
   use usage <- decode.field("usage", usage_decoder())
-  use stop_reason <- decode.optional_field(
+  use stop_reason <- decode.field(
     "stop_reason",
-    None,
-    decode.string |> decode.map(fn(s) { parse_stop_reason(s) }),
+    decode.optional(decode.string)
+      |> decode.map(fn(opt) {
+        case opt {
+          Some(s) -> parse_stop_reason(s)
+          None -> None
+        }
+      }),
   )
-  use stop_sequence <- decode.optional_field(
+  use stop_sequence <- decode.field(
     "stop_sequence",
-    None,
-    decode.string |> decode.map(Some),
+    decode.optional(decode.string),
   )
 
   let role = parse_role(role_str)
