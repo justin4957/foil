@@ -10,7 +10,9 @@ import gleam/string
 import modal_logic/argument.{Argument, Formalization, Invalid, Valid}
 import modal_logic/cache
 import modal_logic/graph
-import modal_logic/proposition.{And, Atom, Implies, K, Necessary, Possible, S4, S5, T}
+import modal_logic/proposition.{
+  And, Atom, Implies, K, Necessary, Possible, S4, S5, T,
+}
 import modal_logic/repository
 
 pub fn main() {
