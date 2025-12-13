@@ -1,3 +1,16 @@
+import anthropic/types/error.{
+  ApiError, AuthenticationError, ConfigError, HttpError, InternalApiError,
+  InvalidRequestError, JsonError, NetworkError, NotFoundError, OverloadedError,
+  PermissionError, RateLimitError, TimeoutError, UnknownApiError,
+  api_error_details, api_error_details_full, api_error_details_to_json,
+  api_error_details_to_string, api_error_type_from_string,
+  api_error_type_to_string, authentication_error, config_error, error_category,
+  error_to_json, error_to_json_string, error_to_string, get_status_code,
+  http_error, internal_api_error, invalid_api_key_error, invalid_request_error,
+  is_authentication_error, is_overloaded_error, is_rate_limit_error,
+  is_retryable, json_error, missing_api_key_error, network_error,
+  overloaded_error, rate_limit_error, timeout_error,
+}
 import anthropic/types/message.{
   Assistant, Base64, ImageBlock, ImageSource, Message, TextBlock,
   ToolResultBlock, ToolUseBlock, User, assistant_message, content_block_to_json,
@@ -699,4 +712,429 @@ pub fn response_to_json_string_test() {
 
   assert string.is_empty(result) == False
   assert string.contains(result, "msg_789")
+}
+
+// =============================================================================
+// ApiErrorType Tests
+// =============================================================================
+
+pub fn api_error_type_from_string_authentication_test() {
+  assert api_error_type_from_string("authentication_error")
+    == AuthenticationError
+}
+
+pub fn api_error_type_from_string_invalid_request_test() {
+  assert api_error_type_from_string("invalid_request_error")
+    == InvalidRequestError
+}
+
+pub fn api_error_type_from_string_rate_limit_test() {
+  assert api_error_type_from_string("rate_limit_error") == RateLimitError
+}
+
+pub fn api_error_type_from_string_api_error_test() {
+  assert api_error_type_from_string("api_error") == InternalApiError
+}
+
+pub fn api_error_type_from_string_overloaded_test() {
+  assert api_error_type_from_string("overloaded_error") == OverloadedError
+}
+
+pub fn api_error_type_from_string_permission_test() {
+  assert api_error_type_from_string("permission_error") == PermissionError
+}
+
+pub fn api_error_type_from_string_not_found_test() {
+  assert api_error_type_from_string("not_found_error") == NotFoundError
+}
+
+pub fn api_error_type_from_string_unknown_test() {
+  assert api_error_type_from_string("some_new_error")
+    == UnknownApiError("some_new_error")
+}
+
+pub fn api_error_type_to_string_authentication_test() {
+  assert api_error_type_to_string(AuthenticationError) == "authentication_error"
+}
+
+pub fn api_error_type_to_string_invalid_request_test() {
+  assert api_error_type_to_string(InvalidRequestError)
+    == "invalid_request_error"
+}
+
+pub fn api_error_type_to_string_rate_limit_test() {
+  assert api_error_type_to_string(RateLimitError) == "rate_limit_error"
+}
+
+pub fn api_error_type_to_string_api_error_test() {
+  assert api_error_type_to_string(InternalApiError) == "api_error"
+}
+
+pub fn api_error_type_to_string_overloaded_test() {
+  assert api_error_type_to_string(OverloadedError) == "overloaded_error"
+}
+
+pub fn api_error_type_to_string_unknown_test() {
+  assert api_error_type_to_string(UnknownApiError("custom")) == "custom"
+}
+
+// =============================================================================
+// ApiErrorDetails Tests
+// =============================================================================
+
+pub fn api_error_details_basic_test() {
+  let details = api_error_details(AuthenticationError, "Invalid API key")
+  assert details.error_type == AuthenticationError
+  assert details.message == "Invalid API key"
+  assert details.param == None
+  assert details.code == None
+}
+
+pub fn api_error_details_full_test() {
+  let details =
+    api_error_details_full(
+      InvalidRequestError,
+      "Missing required field",
+      Some("messages"),
+      Some("MISSING_FIELD"),
+    )
+  assert details.error_type == InvalidRequestError
+  assert details.message == "Missing required field"
+  assert details.param == Some("messages")
+  assert details.code == Some("MISSING_FIELD")
+}
+
+pub fn api_error_details_to_string_basic_test() {
+  let details = api_error_details(RateLimitError, "Too many requests")
+  let result = api_error_details_to_string(details)
+  assert result == "rate_limit_error: Too many requests"
+}
+
+pub fn api_error_details_to_string_with_param_test() {
+  let details =
+    api_error_details_full(
+      InvalidRequestError,
+      "Invalid value",
+      Some("temperature"),
+      None,
+    )
+  let result = api_error_details_to_string(details)
+  assert string.contains(result, "invalid_request_error")
+  assert string.contains(result, "Invalid value")
+  assert string.contains(result, "(param: temperature)")
+}
+
+pub fn api_error_details_to_string_with_code_test() {
+  let details =
+    api_error_details_full(
+      InvalidRequestError,
+      "Invalid value",
+      None,
+      Some("ERR_001"),
+    )
+  let result = api_error_details_to_string(details)
+  assert string.contains(result, "[code: ERR_001]")
+}
+
+pub fn api_error_details_to_json_test() {
+  let details = api_error_details(AuthenticationError, "Invalid key")
+  let result = api_error_details_to_json(details) |> json.to_string
+  assert string.contains(result, "\"type\":\"authentication_error\"")
+  assert string.contains(result, "\"message\":\"Invalid key\"")
+}
+
+// =============================================================================
+// Error Constructor Tests
+// =============================================================================
+
+pub fn authentication_error_constructor_test() {
+  let err = authentication_error("Invalid API key")
+  let assert ApiError(status_code: status, details: details) = err
+  assert status == 401
+  assert details.error_type == AuthenticationError
+  assert details.message == "Invalid API key"
+}
+
+pub fn invalid_request_error_constructor_test() {
+  let err = invalid_request_error("Missing messages field")
+  let assert ApiError(status_code: status, details: details) = err
+  assert status == 400
+  assert details.error_type == InvalidRequestError
+}
+
+pub fn rate_limit_error_constructor_test() {
+  let err = rate_limit_error("Rate limit exceeded")
+  let assert ApiError(status_code: status, details: details) = err
+  assert status == 429
+  assert details.error_type == RateLimitError
+}
+
+pub fn internal_api_error_constructor_test() {
+  let err = internal_api_error("Internal server error")
+  let assert ApiError(status_code: status, details: details) = err
+  assert status == 500
+  assert details.error_type == InternalApiError
+}
+
+pub fn overloaded_error_constructor_test() {
+  let err = overloaded_error("API is overloaded")
+  let assert ApiError(status_code: status, details: details) = err
+  assert status == 529
+  assert details.error_type == OverloadedError
+}
+
+pub fn http_error_constructor_test() {
+  let err = http_error("Connection refused")
+  let assert HttpError(reason: reason) = err
+  assert reason == "Connection refused"
+}
+
+pub fn json_error_constructor_test() {
+  let err = json_error("Invalid JSON syntax")
+  let assert JsonError(reason: reason) = err
+  assert reason == "Invalid JSON syntax"
+}
+
+pub fn config_error_constructor_test() {
+  let err = config_error("Invalid configuration")
+  let assert ConfigError(reason: reason) = err
+  assert reason == "Invalid configuration"
+}
+
+pub fn timeout_error_constructor_test() {
+  let err = timeout_error(30_000)
+  let assert TimeoutError(timeout_ms: ms) = err
+  assert ms == 30_000
+}
+
+pub fn network_error_constructor_test() {
+  let err = network_error("DNS resolution failed")
+  let assert NetworkError(reason: reason) = err
+  assert reason == "DNS resolution failed"
+}
+
+pub fn missing_api_key_error_constructor_test() {
+  let err = missing_api_key_error()
+  let assert ConfigError(reason: reason) = err
+  assert string.contains(reason, "API key")
+}
+
+pub fn invalid_api_key_error_constructor_test() {
+  let err = invalid_api_key_error()
+  let assert ConfigError(reason: reason) = err
+  assert string.contains(reason, "API key")
+}
+
+// =============================================================================
+// Error Display Tests
+// =============================================================================
+
+pub fn error_to_string_api_error_test() {
+  let err = authentication_error("Invalid API key")
+  let result = error_to_string(err)
+  assert string.contains(result, "API Error")
+  assert string.contains(result, "401")
+  assert string.contains(result, "authentication_error")
+  assert string.contains(result, "Invalid API key")
+}
+
+pub fn error_to_string_http_error_test() {
+  let err = http_error("Connection timeout")
+  let result = error_to_string(err)
+  assert result == "HTTP Error: Connection timeout"
+}
+
+pub fn error_to_string_json_error_test() {
+  let err = json_error("Parse error at line 5")
+  let result = error_to_string(err)
+  assert result == "JSON Error: Parse error at line 5"
+}
+
+pub fn error_to_string_config_error_test() {
+  let err = config_error("Missing API key")
+  let result = error_to_string(err)
+  assert result == "Configuration Error: Missing API key"
+}
+
+pub fn error_to_string_timeout_error_test() {
+  let err = timeout_error(60_000)
+  let result = error_to_string(err)
+  assert string.contains(result, "Timeout Error")
+  assert string.contains(result, "60000ms")
+}
+
+pub fn error_to_string_network_error_test() {
+  let err = network_error("No route to host")
+  let result = error_to_string(err)
+  assert result == "Network Error: No route to host"
+}
+
+pub fn error_category_api_test() {
+  let err = authentication_error("test")
+  assert error_category(err) == "api"
+}
+
+pub fn error_category_http_test() {
+  let err = http_error("test")
+  assert error_category(err) == "http"
+}
+
+pub fn error_category_json_test() {
+  let err = json_error("test")
+  assert error_category(err) == "json"
+}
+
+pub fn error_category_config_test() {
+  let err = config_error("test")
+  assert error_category(err) == "config"
+}
+
+pub fn error_category_timeout_test() {
+  let err = timeout_error(1000)
+  assert error_category(err) == "timeout"
+}
+
+pub fn error_category_network_test() {
+  let err = network_error("test")
+  assert error_category(err) == "network"
+}
+
+// =============================================================================
+// Error Predicate Tests
+// =============================================================================
+
+pub fn is_retryable_rate_limit_test() {
+  let err = rate_limit_error("test")
+  assert is_retryable(err) == True
+}
+
+pub fn is_retryable_overloaded_test() {
+  let err = overloaded_error("test")
+  assert is_retryable(err) == True
+}
+
+pub fn is_retryable_internal_api_test() {
+  let err = internal_api_error("test")
+  assert is_retryable(err) == True
+}
+
+pub fn is_retryable_http_test() {
+  let err = http_error("test")
+  assert is_retryable(err) == True
+}
+
+pub fn is_retryable_timeout_test() {
+  let err = timeout_error(1000)
+  assert is_retryable(err) == True
+}
+
+pub fn is_retryable_network_test() {
+  let err = network_error("test")
+  assert is_retryable(err) == True
+}
+
+pub fn is_retryable_auth_test() {
+  let err = authentication_error("test")
+  assert is_retryable(err) == False
+}
+
+pub fn is_retryable_config_test() {
+  let err = config_error("test")
+  assert is_retryable(err) == False
+}
+
+pub fn is_retryable_json_test() {
+  let err = json_error("test")
+  assert is_retryable(err) == False
+}
+
+pub fn is_authentication_error_true_test() {
+  let err = authentication_error("test")
+  assert is_authentication_error(err) == True
+}
+
+pub fn is_authentication_error_false_test() {
+  let err = rate_limit_error("test")
+  assert is_authentication_error(err) == False
+}
+
+pub fn is_rate_limit_error_true_test() {
+  let err = rate_limit_error("test")
+  assert is_rate_limit_error(err) == True
+}
+
+pub fn is_rate_limit_error_false_test() {
+  let err = authentication_error("test")
+  assert is_rate_limit_error(err) == False
+}
+
+pub fn is_overloaded_error_true_test() {
+  let err = overloaded_error("test")
+  assert is_overloaded_error(err) == True
+}
+
+pub fn is_overloaded_error_false_test() {
+  let err = rate_limit_error("test")
+  assert is_overloaded_error(err) == False
+}
+
+pub fn get_status_code_api_error_test() {
+  let err = authentication_error("test")
+  assert get_status_code(err) == Some(401)
+}
+
+pub fn get_status_code_http_error_test() {
+  let err = http_error("test")
+  assert get_status_code(err) == None
+}
+
+// =============================================================================
+// Error JSON Tests
+// =============================================================================
+
+pub fn error_to_json_api_error_test() {
+  let err = authentication_error("Invalid key")
+  let result = error_to_json(err) |> json.to_string
+  assert string.contains(result, "\"category\":\"api\"")
+  assert string.contains(result, "\"status_code\":401")
+  assert string.contains(result, "\"error\":")
+}
+
+pub fn error_to_json_http_error_test() {
+  let err = http_error("Connection failed")
+  let result = error_to_json(err) |> json.to_string
+  assert string.contains(result, "\"category\":\"http\"")
+  assert string.contains(result, "\"reason\":\"Connection failed\"")
+}
+
+pub fn error_to_json_json_error_test() {
+  let err = json_error("Parse error")
+  let result = error_to_json(err) |> json.to_string
+  assert string.contains(result, "\"category\":\"json\"")
+}
+
+pub fn error_to_json_config_error_test() {
+  let err = config_error("Missing config")
+  let result = error_to_json(err) |> json.to_string
+  assert string.contains(result, "\"category\":\"config\"")
+}
+
+pub fn error_to_json_timeout_error_test() {
+  let err = timeout_error(5000)
+  let result = error_to_json(err) |> json.to_string
+  assert string.contains(result, "\"category\":\"timeout\"")
+  assert string.contains(result, "\"timeout_ms\":5000")
+}
+
+pub fn error_to_json_network_error_test() {
+  let err = network_error("DNS failed")
+  let result = error_to_json(err) |> json.to_string
+  assert string.contains(result, "\"category\":\"network\"")
+}
+
+pub fn error_to_json_string_test() {
+  let err = rate_limit_error("Too many requests")
+  let result = error_to_json_string(err)
+  assert string.is_empty(result) == False
+  assert string.contains(result, "rate_limit_error")
 }
