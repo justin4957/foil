@@ -27,9 +27,9 @@ jobs:
           path: |
             ~/.cache/gleam
             **/build
-          key: ${{ runner.os }}-gleam-${{ hashFiles('**/gleam.toml') }}
+          key: ${{ runner.os }}-gleam-otp27-${{ hashFiles('**/gleam.toml') }}
           restore-keys: |
-            ${{ runner.os }}-gleam-
+            ${{ runner.os }}-gleam-otp27-
 
       - name: Test anthropic_gleam
         working-directory: packages/anthropic_gleam
@@ -75,9 +75,9 @@ jobs:
           path: |
             ~/.cache/gleam
             **/build
-          key: ${{ runner.os }}-gleam-${{ hashFiles('**/gleam.toml') }}
+          key: ${{ runner.os }}-gleam-otp27-${{ hashFiles('**/gleam.toml') }}
           restore-keys: |
-            ${{ runner.os }}-gleam-
+            ${{ runner.os }}-gleam-otp27-
 
       - name: Build anthropic_gleam
         working-directory: packages/anthropic_gleam
