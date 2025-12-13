@@ -17,9 +17,20 @@
 import z3/types
 
 // Re-export types for easier access
-pub type Sort = types.Sort
-pub type Expr = types.Expr
-pub type CheckResult = types.CheckResult
-pub type Model = types.Model
-pub type Value = types.Value
-pub type Z3Error = types.Z3Error
+pub type Sort =
+  types.Sort
+
+pub type Expr =
+  types.Expr
+
+pub type CheckResult =
+  types.CheckResult
+
+pub type Model =
+  types.Model
+
+pub type Value =
+  types.Value
+
+pub type Z3Error =
+  types.Z3Error
