@@ -3,7 +3,7 @@ version = "0.1.0"
 
 description = "A well-typed, idiomatic Gleam client for Anthropic's Claude API with streaming support and tool use"
 licences = ["MIT"]
-repository = { type = "github", user = "coolbeans", repo = "foil" }
+repository = { type = "github", user = "justin4957", repo = "foil" }
 
 [dependencies]
 gleam_stdlib = ">= 0.44.0 and < 2.0.0"

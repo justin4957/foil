@@ -3,7 +3,7 @@ version = "0.1.0"
 
 description = "Modal logic analysis system integrating LLM translation and Z3 validation"
 licences = ["MIT"]
-repository = { type = "github", user = "coolbeans", repo = "foil" }
+repository = { type = "github", user = "justin4957", repo = "foil" }
 
 [dependencies]
 gleam_stdlib = ">= 0.44.0 and < 2.0.0"

@@ -69,7 +69,7 @@ The main application integrating LLM translation and Z3 validation:
 
 ```bash
 # Clone the repository
-git clone https://github.com/coolbeans/foil.git
+git clone https://github.com/justin4957/foil.git
 cd foil
 
 # Build all packages

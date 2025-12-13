@@ -3,7 +3,7 @@ version = "0.1.0"
 
 description = "Core domain types for modal logic analysis - shared types for propositions, arguments, and formalizations"
 licences = ["MIT"]
-repository = { type = "github", user = "coolbeans", repo = "foil" }
+repository = { type = "github", user = "justin4957", repo = "foil" }
 
 [dependencies]
 gleam_stdlib = ">= 0.44.0 and < 2.0.0"
