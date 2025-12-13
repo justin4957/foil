@@ -1,3 +1,8 @@
+import anthropic/config.{
+  config_options, default_base_url, default_max_retries, default_timeout_ms,
+  load_config, with_api_key, with_base_url, with_default_model, with_max_retries,
+  with_timeout_ms,
+}
 import anthropic/types/error.{
   ApiError, AuthenticationError, ConfigError, HttpError, InternalApiError,
   InvalidRequestError, JsonError, NetworkError, NotFoundError, OverloadedError,
@@ -29,6 +34,7 @@ import anthropic/types/request.{
   with_stop_sequences, with_stream, with_system, with_temperature, with_top_k,
   with_top_p, with_user_id,
 }
+import gleam/erlang/charlist
 import gleam/json
 import gleam/list
 import gleam/option.{None, Some}
@@ -1137,4 +1143,55 @@ pub fn error_to_json_string_test() {
   let result = error_to_json_string(err)
   assert string.is_empty(result) == False
   assert string.contains(result, "rate_limit_error")
+}
+
+// =============================================================================
+// Configuration Tests
+// =============================================================================
+
+fn set_env(name: String, value: String) -> Nil {
+  let _ = ffi_putenv(charlist.from_string(name), charlist.from_string(value))
+  Nil
+}
+
+@external(erlang, "os", "putenv")
+fn ffi_putenv(name: charlist.Charlist, value: charlist.Charlist) -> Bool
+
+pub fn load_config_from_env_test() {
+  set_env("ANTHROPIC_API_KEY", "env-key")
+  let assert Ok(config) = load_config(config_options())
+
+  assert config.api_key == "env-key"
+  assert config.base_url == default_base_url
+  assert config.default_model == None
+  assert config.timeout_ms == default_timeout_ms
+  assert config.max_retries == default_max_retries
+}
+
+pub fn load_config_prefers_explicit_values_test() {
+  set_env("ANTHROPIC_API_KEY", "env-key")
+
+  let options =
+    config_options()
+    |> with_api_key("explicit-key")
+    |> with_base_url("https://proxy.example")
+    |> with_default_model("claude-proxy")
+    |> with_timeout_ms(10_000)
+    |> with_max_retries(5)
+
+  let assert Ok(config) = load_config(options)
+
+  assert config.api_key == "explicit-key"
+  assert config.base_url == "https://proxy.example"
+  assert config.default_model == Some("claude-proxy")
+  assert config.timeout_ms == 10_000
+  assert config.max_retries == 5
+}
+
+pub fn load_config_missing_api_key_error_test() {
+  set_env("ANTHROPIC_API_KEY", "")
+  let assert Error(err) = load_config(config_options())
+  let assert ConfigError(reason: reason) = err
+
+  assert string.contains(reason, "API key")
 }

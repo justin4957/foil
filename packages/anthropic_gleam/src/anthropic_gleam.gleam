@@ -39,6 +39,7 @@
 ////
 //// All types support JSON encoding/decoding for API communication.
 
+import anthropic/config
 import anthropic/types/error
 import anthropic/types/message
 import anthropic/types/request
@@ -101,6 +102,39 @@ pub const has_tool_use = message.has_tool_use
 pub const get_tool_uses = message.get_tool_uses
 
 pub const content_block_type = message.content_block_type
+
+// =============================================================================
+// Configuration
+// =============================================================================
+
+// Re-export configuration types
+pub type Config =
+  config.Config
+
+pub type ConfigOptions =
+  config.ConfigOptions
+
+// Re-export configuration defaults
+pub const default_base_url = config.default_base_url
+
+pub const default_timeout_ms = config.default_timeout_ms
+
+pub const default_max_retries = config.default_max_retries
+
+// Re-export configuration helpers
+pub const config_options = config.config_options
+
+pub const with_api_key = config.with_api_key
+
+pub const with_base_url = config.with_base_url
+
+pub const with_default_model = config.with_default_model
+
+pub const with_timeout_ms = config.with_timeout_ms
+
+pub const with_max_retries = config.with_max_retries
+
+pub const load_config = config.load_config
 
 // =============================================================================
 // Request/Response Types (from anthropic/types/request)
