@@ -65,30 +65,40 @@ The main application integrating LLM translation and Z3 validation:
 - PostgreSQL (for analyst persistence)
 - Redis (for analyst caching)
 
-### Installation
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed installation instructions.
+
+### Quick Start
 
 ```bash
 # Clone the repository
 git clone https://github.com/justin4957/foil.git
 cd foil
 
-# Build all packages
+# Install Erlang if needed
+brew install erlang
+
+# Install Gleam if needed
+brew install gleam
+
+# Build and run from individual packages
+cd packages/anthropic_gleam
 gleam build
 
-# Run the analyst application
-cd apps/analyst
+cd ../z3_gleam
+gleam build
+
+cd ../../apps/analyst
 gleam run
 ```
 
 ### Running Tests
 
 ```bash
-# Test all packages
-gleam test
-
-# Test specific package
-cd packages/anthropic_gleam
-gleam test
+# Test individual packages
+cd packages/anthropic_gleam && gleam test
+cd packages/z3_gleam && gleam test
+cd packages/modal_logic && gleam test
+cd apps/analyst && gleam test
 ```
 
 ## Development Tracks
@@ -113,6 +123,7 @@ gleam test
 
 ## Documentation
 
+- [Development Guide](docs/DEVELOPMENT.md) - Setup and workflow
 - [Architecture Overview](docs/architecture/README.md)
 - [Testing Strategy](docs/TESTING.md)
 - [Roadmap](modal-logic-engin-roadmap.md)
