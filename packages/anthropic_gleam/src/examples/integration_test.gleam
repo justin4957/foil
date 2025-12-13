@@ -29,7 +29,9 @@ pub fn main() {
       io.println("  export ANTHROPIC_API_KEY=your-api-key")
     }
     Ok(api_key) -> {
-      io.println("API Key: [REDACTED - " <> string.slice(api_key, 0, 8) <> "...]")
+      io.println(
+        "API Key: [REDACTED - " <> string.slice(api_key, 0, 8) <> "...]",
+      )
       io.println("")
       run_tests(api_key)
     }
@@ -221,9 +223,7 @@ fn test_system_prompt(api_key: String) {
       io.println("")
       io.println("REQUEST:")
       io.println("  Model: claude-3-5-haiku-20241022")
-      io.println(
-        "  System: You are a pirate. Always respond in pirate speak.",
-      )
+      io.println("  System: You are a pirate. Always respond in pirate speak.")
       io.println("  Message: What do you do?")
       io.println("  Max tokens: 100")
       io.println("")
