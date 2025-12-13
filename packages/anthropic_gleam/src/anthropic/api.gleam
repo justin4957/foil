@@ -205,22 +205,20 @@ fn input_decoder() -> decode.Decoder(String) {
   })
 }
 
-/// Convert a dynamic value to a JSON string
+/// Convert a dynamic value to a JSON string using Erlang's built-in json module
 fn dynamic_to_json_string(value: Dynamic) -> String {
-  // Try to encode as JSON - for objects, this should work
-  case encode_dynamic_to_json(value) {
-    Ok(json_str) -> json_str
-    Error(_) -> "{}"
-  }
+  // Use Erlang's built-in json:encode which returns iodata
+  let iodata = json_encode(value)
+  iolist_to_binary(iodata)
 }
 
-/// Try to encode a dynamic value back to JSON
-@external(erlang, "gleam_json_ffi", "encode")
-fn ffi_encode(value: Dynamic) -> String
+/// Encode dynamic value to JSON using Erlang's built-in json module (OTP 27+)
+@external(erlang, "json", "encode")
+fn json_encode(value: Dynamic) -> Dynamic
 
-fn encode_dynamic_to_json(value: Dynamic) -> Result(String, Nil) {
-  Ok(ffi_encode(value))
-}
+/// Convert iodata to binary string
+@external(erlang, "erlang", "iolist_to_binary")
+fn iolist_to_binary(data: Dynamic) -> String
 
 /// Decoder for Usage
 fn usage_decoder() -> decode.Decoder(Usage) {
