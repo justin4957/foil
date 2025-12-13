@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Erlang and Gleam
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '26.2'
+          gleam-version: '1.6.0'
+
+      - name: Cache Gleam dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/gleam
+            **/build
+          key: ${{ runner.os }}-gleam-${{ hashFiles('**/gleam.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-gleam-
+
+      - name: Test anthropic_gleam
+        working-directory: packages/anthropic_gleam
+        run: |
+          gleam deps download
+          gleam test
+
+      - name: Test z3_gleam
+        working-directory: packages/z3_gleam
+        run: |
+          gleam deps download
+          gleam test
+
+      - name: Test modal_logic
+        working-directory: packages/modal_logic
+        run: |
+          gleam deps download
+          gleam test
+
+      - name: Test analyst
+        working-directory: apps/analyst
+        run: |
+          gleam deps download
+          gleam test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Erlang and Gleam
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '26.2'
+          gleam-version: '1.6.0'
+
+      - name: Cache Gleam dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/gleam
+            **/build
+          key: ${{ runner.os }}-gleam-${{ hashFiles('**/gleam.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-gleam-
+
+      - name: Build anthropic_gleam
+        working-directory: packages/anthropic_gleam
+        run: |
+          gleam deps download
+          gleam build
+
+      - name: Build z3_gleam
+        working-directory: packages/z3_gleam
+        run: |
+          gleam deps download
+          gleam build
+
+      - name: Build modal_logic
+        working-directory: packages/modal_logic
+        run: |
+          gleam deps download
+          gleam build
+
+      - name: Build analyst
+        working-directory: apps/analyst
+        run: |
+          gleam deps download
+          gleam build
+
+  format:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Erlang and Gleam
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '26.2'
+          gleam-version: '1.6.0'
+
+      - name: Check formatting - anthropic_gleam
+        working-directory: packages/anthropic_gleam
+        run: gleam format --check src test
+
+      - name: Check formatting - z3_gleam
+        working-directory: packages/z3_gleam
+        run: gleam format --check src test
+
+      - name: Check formatting - modal_logic
+        working-directory: packages/modal_logic
+        run: gleam format --check src test
+
+      - name: Check formatting - analyst
+        working-directory: apps/analyst
+        run: gleam format --check src test
