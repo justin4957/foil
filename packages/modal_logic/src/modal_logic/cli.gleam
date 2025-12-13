@@ -166,7 +166,11 @@ pub fn parse_args_with_config(
     ["example", system] ->
       case parse_logic_system(system) {
         Ok(s) -> ParseSuccess(ExampleCommand(Some(s)), config)
-        Error(msg) -> ParseError(msg, Some("Try: example K, example T, example S4, example S5"))
+        Error(msg) ->
+          ParseError(
+            msg,
+            Some("Try: example K, example T, example S4, example S5"),
+          )
       }
     ["analyze", ..rest] -> parse_analyze_command(rest, config)
     ["validate", ..rest] -> parse_validate_command(rest, config)
@@ -175,7 +179,11 @@ pub fn parse_args_with_config(
     ["export", format, output] ->
       case parse_export_format(format) {
         Ok(fmt) -> ParseSuccess(ExportCommand(fmt, output), config)
-        Error(msg) -> ParseError(msg, Some("Formats: mermaid, graphviz, latex, markdown, json"))
+        Error(msg) ->
+          ParseError(
+            msg,
+            Some("Formats: mermaid, graphviz, latex, markdown, json"),
+          )
       }
     [unknown, ..] ->
       ParseError(
@@ -295,10 +303,7 @@ pub type CliResult {
 }
 
 /// Format analysis result for display
-pub fn format_result(
-  result: AnalysisResult,
-  config: CliConfig,
-) -> String {
+pub fn format_result(result: AnalysisResult, config: CliConfig) -> String {
   case config.output_format {
     TextFormat -> format_text_result(result, config)
     JsonFormat -> format_json_result(result)
@@ -341,11 +346,7 @@ pub type RelationInfo {
 
 /// Repair suggestion information
 pub type RepairInfo {
-  RepairInfo(
-    suggestion_type: String,
-    description: String,
-    confidence: Float,
-  )
+  RepairInfo(suggestion_type: String, description: String, confidence: Float)
 }
 
 fn format_text_result(result: AnalysisResult, config: CliConfig) -> String {
@@ -480,11 +481,7 @@ fn format_json_result(result: AnalysisResult) -> String {
         Some(d) -> "\"" <> d <> "\""
         None -> "null"
       }
-      "{\"error\": \""
-      <> message
-      <> "\", \"details\": "
-      <> details_json
-      <> "}"
+      "{\"error\": \"" <> message <> "\", \"details\": " <> details_json <> "}"
     }
   }
 }
@@ -551,7 +548,9 @@ fn format_markdown_result(result: AnalysisResult, config: CliConfig) -> String {
 
       case repairs, config.show_repairs {
         [_, ..], True ->
-          with_cm <> "\n\n### Repair Suggestions\n\n" <> format_repairs_markdown(repairs)
+          with_cm
+          <> "\n\n### Repair Suggestions\n\n"
+          <> format_repairs_markdown(repairs)
         _, _ -> with_cm
       }
     }
@@ -580,11 +579,7 @@ fn format_countermodel_markdown(cm: CountermodelInfo) -> String {
   let relations =
     list.map(cm.relations, fn(r) { "- " <> r.from <> " → " <> r.to })
     |> string.join("\n")
-  header
-  <> "\n\n**Worlds:**\n"
-  <> worlds
-  <> "\n\n**Relations:**\n"
-  <> relations
+  header <> "\n\n**Worlds:**\n" <> worlds <> "\n\n**Relations:**\n" <> relations
 }
 
 fn format_repairs_markdown(repairs: List(RepairInfo)) -> String {
@@ -966,17 +961,31 @@ fn proposition_to_string(prop: Proposition) -> String {
     Atom(name) -> name
     Not(inner) -> "¬" <> proposition_to_string(inner)
     And(left, right) ->
-      "(" <> proposition_to_string(left) <> " ∧ " <> proposition_to_string(right) <> ")"
+      "("
+      <> proposition_to_string(left)
+      <> " ∧ "
+      <> proposition_to_string(right)
+      <> ")"
     Or(left, right) ->
-      "(" <> proposition_to_string(left) <> " ∨ " <> proposition_to_string(right) <> ")"
+      "("
+      <> proposition_to_string(left)
+      <> " ∨ "
+      <> proposition_to_string(right)
+      <> ")"
     Implies(left, right) ->
-      "(" <> proposition_to_string(left) <> " → " <> proposition_to_string(right) <> ")"
+      "("
+      <> proposition_to_string(left)
+      <> " → "
+      <> proposition_to_string(right)
+      <> ")"
     Necessary(inner) -> "□" <> proposition_to_string(inner)
     Possible(inner) -> "◇" <> proposition_to_string(inner)
     Obligatory(inner) -> "O" <> proposition_to_string(inner)
     Permitted(inner) -> "P" <> proposition_to_string(inner)
-    Knows(agent, inner) -> "K_" <> agent <> "(" <> proposition_to_string(inner) <> ")"
-    Believes(agent, inner) -> "B_" <> agent <> "(" <> proposition_to_string(inner) <> ")"
+    Knows(agent, inner) ->
+      "K_" <> agent <> "(" <> proposition_to_string(inner) <> ")"
+    Believes(agent, inner) ->
+      "B_" <> agent <> "(" <> proposition_to_string(inner) <> ")"
   }
 }
 
@@ -1013,7 +1022,9 @@ fn do_int_to_string(n: Int, acc: String) -> String {
 fn float_to_string(f: Float) -> String {
   // Simple float formatting - whole part only for now
   let whole = float_truncate(f)
-  int_to_string(whole) <> "." <> int_to_string(float_truncate({ f -. int_to_float(whole) } *. 100.0))
+  int_to_string(whole)
+  <> "."
+  <> int_to_string(float_truncate({ f -. int_to_float(whole) } *. 100.0))
 }
 
 @external(erlang, "erlang", "trunc")

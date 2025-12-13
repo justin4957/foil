@@ -135,7 +135,8 @@ fn test_websocket() {
   )
 
   // Test event creation
-  let started_event = websocket.analysis_started("req-123", "Test argument text")
+  let started_event =
+    websocket.analysis_started("req-123", "Test argument text")
   io.println("[OK] Analysis started event created")
   io.println("     Request ID: " <> started_event.request_id)
 
@@ -359,7 +360,9 @@ fn test_visualization() {
   // Test Mermaid export
   let mermaid = visualization.to_mermaid(model)
   io.println("[OK] Mermaid export generated")
-  io.println("     Length: " <> int_to_string(string.length(mermaid)) <> " chars")
+  io.println(
+    "     Length: " <> int_to_string(string.length(mermaid)) <> " chars",
+  )
   case string.contains(mermaid, "graph") {
     True -> io.println("     Contains graph directive")
     False -> io.println("[WARN] Missing graph directive")
@@ -442,7 +445,9 @@ fn test_visualization() {
     <> " chars",
   )
   io.println(
-    "     TikZ length: " <> int_to_string(string.length(bundle.tikz)) <> " chars",
+    "     TikZ length: "
+    <> int_to_string(string.length(bundle.tikz))
+    <> " chars",
   )
 
   // Test format utilities

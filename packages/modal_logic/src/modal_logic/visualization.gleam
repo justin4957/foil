@@ -112,7 +112,10 @@ pub fn to_mermaid(model: KripkeModel) -> String {
 }
 
 /// Export with custom configuration
-pub fn to_mermaid_with_config(model: KripkeModel, config: MermaidConfig) -> String {
+pub fn to_mermaid_with_config(
+  model: KripkeModel,
+  config: MermaidConfig,
+) -> String {
   let direction = case config.direction {
     TopBottom -> "TB"
     BottomTop -> "BT"
@@ -154,7 +157,12 @@ pub fn to_mermaid_with_config(model: KripkeModel, config: MermaidConfig) -> Stri
     <> system_to_string(model.logic_system)
     <> "\"]\n    end"
 
-  header <> world_definitions <> "\n" <> relation_definitions <> styling <> system_note
+  header
+  <> world_definitions
+  <> "\n"
+  <> relation_definitions
+  <> styling
+  <> system_note
 }
 
 fn format_world_label(world: World, show_valuations: Bool) -> String {
@@ -295,13 +303,7 @@ pub fn to_graphviz_with_config(
         True -> ", style=filled, fillcolor=\"#90EE90\", penwidth=3"
         False -> ""
       }
-      "    "
-      <> w.name
-      <> " [label=\""
-      <> label
-      <> "\""
-      <> style
-      <> "];"
+      "    " <> w.name <> " [label=\"" <> label <> "\"" <> style <> "];"
     })
     |> string.join("\n")
 
@@ -414,7 +416,8 @@ fn to_tikz(model: KripkeModel, config: LatexConfig) -> String {
     list.index_map(model.worlds, fn(w, i) {
       let x = i % 3 * 4
       let y = i / 3 * -3
-      let label = format_tikz_label(w, config.show_valuations, config.use_symbols)
+      let label =
+        format_tikz_label(w, config.show_valuations, config.use_symbols)
       let style = case w.name == model.actual_world {
         True -> "actual"
         False -> ""
@@ -448,7 +451,7 @@ fn to_tikz(model: KripkeModel, config: LatexConfig) -> String {
     "\n\n    % Legend\n"
     <> "    \\node[draw=none, rectangle, below=1cm of "
     <> result.unwrap(list.first(model.worlds), World("w0", [], []))
-      |> fn(w: World) { w.name }
+    |> fn(w: World) { w.name }
     <> "] {System: $\\mathbf{"
     <> system_to_string(model.logic_system)
     <> "}$};"
@@ -528,7 +531,9 @@ fn to_xypic(model: KripkeModel, config: LatexConfig) -> String {
           }
         })
         |> string.join("")
-      style <> arrows <> case i + 1 < world_count {
+      style
+      <> arrows
+      <> case i + 1 < world_count {
         True ->
           case { i + 1 } % 3 == 0 {
             True -> " \\\\\n"
@@ -662,7 +667,10 @@ pub fn to_markdown_with_config(
   <> explanation_section
 }
 
-fn format_countermodel_markdown(model: KripkeModel, config: MarkdownConfig) -> String {
+fn format_countermodel_markdown(
+  model: KripkeModel,
+  config: MarkdownConfig,
+) -> String {
   let heading = string.repeat("#", config.heading_level) <> "# "
 
   let header = heading <> "Countermodel\n\n"
@@ -678,8 +686,7 @@ fn format_countermodel_markdown(model: KripkeModel, config: MarkdownConfig) -> S
     <> "\n\n"
 
   let mermaid_section = case config.include_mermaid {
-    True ->
-      "**Diagram:**\n\n```mermaid\n" <> to_mermaid(model) <> "\n```\n\n"
+    True -> "**Diagram:**\n\n```mermaid\n" <> to_mermaid(model) <> "\n```\n\n"
     False -> ""
   }
 
@@ -753,7 +760,8 @@ pub fn proposition_to_latex(prop: Proposition) -> String {
     Obligatory(inner) -> "\\mathcal{O} " <> proposition_to_latex(inner)
     Permitted(inner) -> "\\mathcal{P} " <> proposition_to_latex(inner)
     Knows(agent, inner) -> "K_{" <> agent <> "} " <> proposition_to_latex(inner)
-    Believes(agent, inner) -> "B_{" <> agent <> "} " <> proposition_to_latex(inner)
+    Believes(agent, inner) ->
+      "B_{" <> agent <> "} " <> proposition_to_latex(inner)
   }
 }
 
@@ -763,17 +771,31 @@ pub fn proposition_to_unicode(prop: Proposition) -> String {
     Atom(name) -> name
     Not(inner) -> "¬" <> proposition_to_unicode(inner)
     And(left, right) ->
-      "(" <> proposition_to_unicode(left) <> " ∧ " <> proposition_to_unicode(right) <> ")"
+      "("
+      <> proposition_to_unicode(left)
+      <> " ∧ "
+      <> proposition_to_unicode(right)
+      <> ")"
     Or(left, right) ->
-      "(" <> proposition_to_unicode(left) <> " ∨ " <> proposition_to_unicode(right) <> ")"
+      "("
+      <> proposition_to_unicode(left)
+      <> " ∨ "
+      <> proposition_to_unicode(right)
+      <> ")"
     Implies(left, right) ->
-      "(" <> proposition_to_unicode(left) <> " → " <> proposition_to_unicode(right) <> ")"
+      "("
+      <> proposition_to_unicode(left)
+      <> " → "
+      <> proposition_to_unicode(right)
+      <> ")"
     Necessary(inner) -> "□" <> proposition_to_unicode(inner)
     Possible(inner) -> "◇" <> proposition_to_unicode(inner)
     Obligatory(inner) -> "O" <> proposition_to_unicode(inner)
     Permitted(inner) -> "P" <> proposition_to_unicode(inner)
-    Knows(agent, inner) -> "K_" <> agent <> "(" <> proposition_to_unicode(inner) <> ")"
-    Believes(agent, inner) -> "B_" <> agent <> "(" <> proposition_to_unicode(inner) <> ")"
+    Knows(agent, inner) ->
+      "K_" <> agent <> "(" <> proposition_to_unicode(inner) <> ")"
+    Believes(agent, inner) ->
+      "B_" <> agent <> "(" <> proposition_to_unicode(inner) <> ")"
   }
 }
 
@@ -783,17 +805,31 @@ pub fn proposition_to_ascii(prop: Proposition) -> String {
     Atom(name) -> name
     Not(inner) -> "~" <> proposition_to_ascii(inner)
     And(left, right) ->
-      "(" <> proposition_to_ascii(left) <> " & " <> proposition_to_ascii(right) <> ")"
+      "("
+      <> proposition_to_ascii(left)
+      <> " & "
+      <> proposition_to_ascii(right)
+      <> ")"
     Or(left, right) ->
-      "(" <> proposition_to_ascii(left) <> " | " <> proposition_to_ascii(right) <> ")"
+      "("
+      <> proposition_to_ascii(left)
+      <> " | "
+      <> proposition_to_ascii(right)
+      <> ")"
     Implies(left, right) ->
-      "(" <> proposition_to_ascii(left) <> " -> " <> proposition_to_ascii(right) <> ")"
+      "("
+      <> proposition_to_ascii(left)
+      <> " -> "
+      <> proposition_to_ascii(right)
+      <> ")"
     Necessary(inner) -> "[]" <> proposition_to_ascii(inner)
     Possible(inner) -> "<>" <> proposition_to_ascii(inner)
     Obligatory(inner) -> "O" <> proposition_to_ascii(inner)
     Permitted(inner) -> "P" <> proposition_to_ascii(inner)
-    Knows(agent, inner) -> "K_" <> agent <> "(" <> proposition_to_ascii(inner) <> ")"
-    Believes(agent, inner) -> "B_" <> agent <> "(" <> proposition_to_ascii(inner) <> ")"
+    Knows(agent, inner) ->
+      "K_" <> agent <> "(" <> proposition_to_ascii(inner) <> ")"
+    Believes(agent, inner) ->
+      "B_" <> agent <> "(" <> proposition_to_ascii(inner) <> ")"
   }
 }
 
@@ -806,7 +842,10 @@ pub fn export_all(model: KripkeModel) -> ExportBundle {
   ExportBundle(
     mermaid: to_mermaid(model),
     graphviz: to_graphviz(model),
-    tikz: to_latex_with_config(model, LatexConfig(..default_latex_config(), include_preamble: False)),
+    tikz: to_latex_with_config(
+      model,
+      LatexConfig(..default_latex_config(), include_preamble: False),
+    ),
     system: model.logic_system,
   )
 }

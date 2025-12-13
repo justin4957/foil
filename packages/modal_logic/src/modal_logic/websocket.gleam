@@ -230,7 +230,9 @@ pub fn add_connection(handler: Handler, connection: Connection) -> Handler {
 pub fn remove_connection(handler: Handler, connection_id: String) -> Handler {
   Handler(
     ..handler,
-    connections: list.filter(handler.connections, fn(c) { c.id != connection_id }),
+    connections: list.filter(handler.connections, fn(c) {
+      c.id != connection_id
+    }),
   )
 }
 
@@ -319,7 +321,12 @@ pub fn handle_message(
   case message {
     SubscribeMessage(request_id) -> {
       let updated =
-        update_connection_subscriptions(handler, connection_id, request_id, True)
+        update_connection_subscriptions(
+          handler,
+          connection_id,
+          request_id,
+          True,
+        )
       #(updated, [SubscribedMessage(request_id)])
     }
     UnsubscribeMessage(request_id) -> {
@@ -347,10 +354,9 @@ pub fn handle_message(
       #(updated, [ProgressMessage(event)])
     }
     ClientPing -> #(handler, [ServerPong])
-    UnknownMessage(_) -> #(
-      handler,
-      [ErrorMessage("unknown_message", "Unknown message type")],
-    )
+    UnknownMessage(_) -> #(handler, [
+      ErrorMessage("unknown_message", "Unknown message type"),
+    ])
   }
 }
 
@@ -365,8 +371,7 @@ fn update_connection_subscriptions(
       case c.id == connection_id {
         True ->
           case add {
-            True ->
-              Connection(..c, subscriptions: [topic, ..c.subscriptions])
+            True -> Connection(..c, subscriptions: [topic, ..c.subscriptions])
             False ->
               Connection(
                 ..c,
@@ -390,9 +395,7 @@ pub fn broadcast_event(
 ) -> #(Handler, List(#(String, ServerMessage))) {
   let messages =
     handler.connections
-    |> list.filter(fn(c) {
-      list.contains(c.subscriptions, event.request_id)
-    })
+    |> list.filter(fn(c) { list.contains(c.subscriptions, event.request_id) })
     |> list.map(fn(c) { #(c.id, ProgressMessage(event)) })
 
   let updated = add_event(handler, event)
@@ -427,7 +430,9 @@ pub fn analysis_started(request_id: String, text: String) -> ProgressEvent {
     timestamp: get_timestamp(),
     progress: 0,
     message: "Analysis started",
-    data: Some("{\"text_length\": " <> int_to_string(string.length(text)) <> "}"),
+    data: Some(
+      "{\"text_length\": " <> int_to_string(string.length(text)) <> "}",
+    ),
   )
 }
 
@@ -463,7 +468,9 @@ pub fn formalization_complete(
       <> int_to_string(premise_count)
       <> " premises",
     data: Some(
-      "{\"premises\": " <> int_to_string(premise_count) <> ", \"conclusion\": \""
+      "{\"premises\": "
+      <> int_to_string(premise_count)
+      <> ", \"conclusion\": \""
       <> escape_json(conclusion)
       <> "\"}",
     ),
@@ -481,8 +488,12 @@ pub fn validation_progress(
     request_id: request_id,
     timestamp: get_timestamp(),
     progress: 50 + progress / 2,
-    message: "Validating... " <> int_to_string(worlds_explored) <> " worlds explored",
-    data: Some("{\"worlds_explored\": " <> int_to_string(worlds_explored) <> "}"),
+    message: "Validating... "
+      <> int_to_string(worlds_explored)
+      <> " worlds explored",
+    data: Some(
+      "{\"worlds_explored\": " <> int_to_string(worlds_explored) <> "}",
+    ),
   )
 }
 
@@ -498,11 +509,7 @@ pub fn validation_complete(
     timestamp: get_timestamp(),
     progress: 90,
     message: message,
-    data: Some(
-      "{\"is_valid\": "
-      <> bool_to_string(is_valid)
-      <> "}",
-    ),
+    data: Some("{\"is_valid\": " <> bool_to_string(is_valid) <> "}"),
   )
 }
 
@@ -686,7 +693,9 @@ fn do_int_to_string(n: Int, acc: String) -> String {
 fn float_to_string(f: Float) -> String {
   let int_part = float_to_int(f)
   let frac_part = float_to_int({ f -. int_to_float(int_part) } *. 100.0)
-  int_to_string(int_part) <> "." <> pad_left(int_to_string(abs_int(frac_part)), 2)
+  int_to_string(int_part)
+  <> "."
+  <> pad_left(int_to_string(abs_int(frac_part)), 2)
 }
 
 fn pad_left(s: String, len: Int) -> String {

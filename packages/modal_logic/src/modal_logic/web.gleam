@@ -516,9 +516,12 @@ pub fn analysis_form(current_system: Option(LogicSystem)) -> Html {
   div([class("card")], [
     form([id("analyze-form"), Attr("method", "POST")], [
       div([class("tabs")], [
-        button([class("tab active"), DataAttr("tab", "natural-tab"), type_("button")], [
-          text("Natural Language"),
-        ]),
+        button(
+          [class("tab active"), DataAttr("tab", "natural-tab"), type_("button")],
+          [
+            text("Natural Language"),
+          ],
+        ),
         button([class("tab"), DataAttr("tab", "formal-tab"), type_("button")], [
           text("Formal Logic"),
         ]),
@@ -583,7 +586,9 @@ pub fn analysis_form(current_system: Option(LogicSystem)) -> Html {
         div([class("spinner")], []),
         span([class("status-text")], [text("Analyzing...")]),
       ]),
-      div([class("progress-bar")], [div([class("progress-fill"), style("width: 0%")], [])]),
+      div([class("progress-bar")], [
+        div([class("progress-fill"), style("width: 0%")], []),
+      ]),
     ]),
   ])
 }
@@ -602,11 +607,7 @@ pub fn result_display(result: AnalysisDisplayResult) -> Html {
 
 /// Analysis result for display
 pub type AnalysisDisplayResult {
-  ValidDisplay(
-    system: LogicSystem,
-    premises: List(String),
-    conclusion: String,
-  )
+  ValidDisplay(system: LogicSystem, premises: List(String), conclusion: String)
   InvalidDisplay(
     system: LogicSystem,
     premises: List(String),
@@ -629,7 +630,11 @@ pub type CountermodelDisplay {
 
 /// World for display
 pub type WorldDisplay {
-  WorldDisplay(name: String, true_atoms: List(String), false_atoms: List(String))
+  WorldDisplay(
+    name: String,
+    true_atoms: List(String),
+    false_atoms: List(String),
+  )
 }
 
 /// Repair suggestion for display
@@ -775,7 +780,11 @@ pub fn analyzer_page() -> String {
 
 /// Build the documentation page
 pub fn docs_page() -> String {
-  let config = PageConfig(..default_page_config(), title: "Documentation - Modal Logic Analyzer")
+  let config =
+    PageConfig(
+      ..default_page_config(),
+      title: "Documentation - Modal Logic Analyzer",
+    )
   let content =
     div([class("container")], [
       div([class("header")], [
@@ -784,13 +793,25 @@ pub fn docs_page() -> String {
       div([class("card")], [
         h2([], [text("Logic Systems")]),
         h3([], [text("System K")]),
-        p([], [text("The basic modal logic with no additional axioms beyond the K axiom: □(p→q) → (□p→□q)")]),
+        p([], [
+          text(
+            "The basic modal logic with no additional axioms beyond the K axiom: □(p→q) → (□p→□q)",
+          ),
+        ]),
         h3([], [text("System T")]),
         p([], [text("Adds reflexivity: □p → p (what is necessary is true)")]),
         h3([], [text("System S4")]),
-        p([], [text("Adds transitivity: □p → □□p (necessary truths are necessarily necessary)")]),
+        p([], [
+          text(
+            "Adds transitivity: □p → □□p (necessary truths are necessarily necessary)",
+          ),
+        ]),
         h3([], [text("System S5")]),
-        p([], [text("Full equivalence relation: ◇p → □◇p (what is possible is necessarily possible)")]),
+        p([], [
+          text(
+            "Full equivalence relation: ◇p → □◇p (what is possible is necessarily possible)",
+          ),
+        ]),
       ]),
       div([class("card")], [
         h2([], [text("Formula Syntax")]),
@@ -820,10 +841,14 @@ pub fn api_docs_page() -> String {
         h2([], [text("REST Endpoints")]),
         h3([], [text("POST /api/analyze")]),
         p([], [text("Analyze a natural language argument")]),
-        raw("<pre><code>{\"text\": \"All men are mortal...\", \"system\": \"K\"}</code></pre>"),
+        raw(
+          "<pre><code>{\"text\": \"All men are mortal...\", \"system\": \"K\"}</code></pre>",
+        ),
         h3([], [text("POST /api/validate")]),
         p([], [text("Validate a formal argument")]),
-        raw("<pre><code>{\"premises\": [\"□(p→q)\", \"□p\"], \"conclusion\": \"□q\", \"system\": \"K\"}</code></pre>"),
+        raw(
+          "<pre><code>{\"premises\": [\"□(p→q)\", \"□p\"], \"conclusion\": \"□q\", \"system\": \"K\"}</code></pre>",
+        ),
         h3([], [text("GET /api/systems")]),
         p([], [text("List available logic systems")]),
       ]),
