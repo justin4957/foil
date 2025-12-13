@@ -17,12 +17,24 @@ import modal_logic/argument
 import modal_logic/proposition
 
 // Re-export proposition types
-pub type Proposition = proposition.Proposition
-pub type LogicSystem = proposition.LogicSystem
-pub type ModalInterpretation = proposition.ModalInterpretation
+pub type Proposition =
+  proposition.Proposition
+
+pub type LogicSystem =
+  proposition.LogicSystem
+
+pub type ModalInterpretation =
+  proposition.ModalInterpretation
 
 // Re-export argument types
-pub type Argument = argument.Argument
-pub type Formalization = argument.Formalization
-pub type ValidationResult = argument.ValidationResult
-pub type Ambiguity = argument.Ambiguity
+pub type Argument =
+  argument.Argument
+
+pub type Formalization =
+  argument.Formalization
+
+pub type ValidationResult =
+  argument.ValidationResult
+
+pub type Ambiguity =
+  argument.Ambiguity

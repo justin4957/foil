@@ -27,10 +27,11 @@ pub fn main() -> Nil {
   io.println("Ready for development!")
 
   // Example: Create a simple proposition
-  let example_proposition = proposition.Implies(
-    proposition.Atom("rain"),
-    proposition.Necessary(proposition.Atom("wet"))
-  )
+  let example_proposition =
+    proposition.Implies(
+      proposition.Atom("rain"),
+      proposition.Necessary(proposition.Atom("wet")),
+    )
 
   io.println("")
   io.println("Example proposition: rain -> []wet")
