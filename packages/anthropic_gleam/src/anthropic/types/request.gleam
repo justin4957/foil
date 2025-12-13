@@ -7,6 +7,9 @@ import anthropic/types/message.{
   type ContentBlock, type Message, type Role, Assistant, TextBlock, ToolUseBlock,
   messages_to_json,
 }
+import anthropic/types/tool.{
+  type Tool, type ToolChoice, tool_choice_to_json, tools_to_json,
+}
 import gleam/json.{type Json}
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -128,6 +131,10 @@ pub type CreateMessageRequest {
     stream: Option(Bool),
     /// Optional metadata including user_id
     metadata: Option(Metadata),
+    /// List of tools available to the model
+    tools: Option(List(Tool)),
+    /// How the model should choose which tool to use
+    tool_choice: Option(ToolChoice),
   )
 }
 
@@ -148,6 +155,8 @@ pub fn create_request(
     stop_sequences: None,
     stream: None,
     metadata: None,
+    tools: None,
+    tool_choice: None,
   )
 }
 
@@ -218,6 +227,31 @@ pub fn with_user_id(
   )
 }
 
+/// Set tools on a request
+pub fn with_tools(
+  request: CreateMessageRequest,
+  tools: List(Tool),
+) -> CreateMessageRequest {
+  CreateMessageRequest(..request, tools: Some(tools))
+}
+
+/// Set tool choice on a request
+pub fn with_tool_choice(
+  request: CreateMessageRequest,
+  choice: ToolChoice,
+) -> CreateMessageRequest {
+  CreateMessageRequest(..request, tool_choice: Some(choice))
+}
+
+/// Set tools and tool choice on a request (convenience function)
+pub fn with_tools_and_choice(
+  request: CreateMessageRequest,
+  tools: List(Tool),
+  choice: ToolChoice,
+) -> CreateMessageRequest {
+  CreateMessageRequest(..request, tools: Some(tools), tool_choice: Some(choice))
+}
+
 /// Encode a CreateMessageRequest to JSON
 pub fn request_to_json(request: CreateMessageRequest) -> Json {
   let required_fields = [
@@ -235,6 +269,8 @@ pub fn request_to_json(request: CreateMessageRequest) -> Json {
     |> add_optional_string_list("stop_sequences", request.stop_sequences)
     |> add_optional_bool("stream", request.stream)
     |> add_optional_metadata("metadata", request.metadata)
+    |> add_optional_tools("tools", request.tools)
+    |> add_optional_tool_choice("tool_choice", request.tool_choice)
 
   json.object(list.append(required_fields, optional_fields))
 }
@@ -309,6 +345,28 @@ fn add_optional_metadata(
 ) -> List(#(String, Json)) {
   case value {
     Some(m) -> list.append(fields, [#(key, metadata_to_json(m))])
+    None -> fields
+  }
+}
+
+fn add_optional_tools(
+  fields: List(#(String, Json)),
+  key: String,
+  value: Option(List(Tool)),
+) -> List(#(String, Json)) {
+  case value {
+    Some(t) -> list.append(fields, [#(key, tools_to_json(t))])
+    None -> fields
+  }
+}
+
+fn add_optional_tool_choice(
+  fields: List(#(String, Json)),
+  key: String,
+  value: Option(ToolChoice),
+) -> List(#(String, Json)) {
+  case value {
+    Some(tc) -> list.append(fields, [#(key, tool_choice_to_json(tc))])
     None -> fields
   }
 }

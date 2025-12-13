@@ -141,7 +141,7 @@ pub fn content_block_to_json(block: ContentBlock) -> Json {
         #("type", json.string("tool_use")),
         #("id", json.string(id)),
         #("name", json.string(name)),
-        #("input", json.string(input)),
+        #("input", json_string_to_raw_json(input)),
       ])
 
     ToolResultBlock(
@@ -286,6 +286,20 @@ pub fn tool_error(tool_use_id: String, error_message: String) -> ContentBlock {
     is_error: Some(True),
   )
 }
+
+// =============================================================================
+// Raw JSON helpers
+// =============================================================================
+
+/// Convert a JSON string to a raw JSON value (for embedding pre-encoded JSON)
+/// Uses the FFI to parse JSON and convert Erlang terms to Gleam Json
+fn json_string_to_raw_json(json_string: String) -> Json {
+  ffi_json_string_to_gleam_json(json_string)
+}
+
+/// FFI function to parse JSON string and convert to Gleam Json type
+@external(erlang, "anthropic_ffi", "json_string_to_gleam_json")
+fn ffi_json_string_to_gleam_json(json_string: String) -> Json
 
 // =============================================================================
 // JSON String helpers
