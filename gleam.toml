@@ -1,15 +1,6 @@
-# Modal Logic Engine Workspace
-# This is a Gleam workspace containing multiple packages
-
-[workspace]
-members = [
-  "packages/anthropic_gleam",
-  "packages/z3_gleam",
-  "packages/modal_logic",
-  "apps/analyst",
-]
-
-[workspace.metadata]
-name = "modal-logic-engine"
+name = "modal_logic_engine"
 version = "0.1.0"
-description = "A modal logic analysis system using LLMs and Z3"
+
+# This is a Gleam workspace containing multiple packages
+[dependencies]
+gleam_stdlib = ">= 0.44.0 and < 2.0.0"
