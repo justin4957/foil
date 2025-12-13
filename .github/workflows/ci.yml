@@ -19,7 +19,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: '26.2'
-          gleam-version: '1.6.0'
+          gleam-version: '1.13.0'
 
       - name: Cache Gleam dependencies
         uses: actions/cache@v4
@@ -67,7 +67,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: '26.2'
-          gleam-version: '1.6.0'
+          gleam-version: '1.13.0'
 
       - name: Cache Gleam dependencies
         uses: actions/cache@v4
@@ -115,7 +115,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: '26.2'
-          gleam-version: '1.6.0'
+          gleam-version: '1.13.0'
 
       - name: Check formatting - anthropic_gleam
         working-directory: packages/anthropic_gleam
