@@ -1,3 +1,8 @@
+import anthropic/config.{
+  config_options, default_base_url, default_max_retries, default_timeout_ms,
+  load_config, with_api_key, with_base_url, with_default_model, with_max_retries,
+  with_timeout_ms,
+}
 import anthropic/types/error.{
   ApiError, AuthenticationError, ConfigError, HttpError, InternalApiError,
   InvalidRequestError, JsonError, NetworkError, NotFoundError, OverloadedError,
@@ -28,11 +33,6 @@ import anthropic/types/request.{
   stop_reason_to_string, usage, usage_to_json, with_metadata,
   with_stop_sequences, with_stream, with_system, with_temperature, with_top_k,
   with_top_p, with_user_id,
-}
-import anthropic/config.{
-  config_options, default_base_url, default_max_retries, default_timeout_ms,
-  load_config, with_api_key, with_base_url, with_default_model,
-  with_max_retries, with_timeout_ms,
 }
 import gleam/erlang/charlist
 import gleam/json
@@ -1155,10 +1155,7 @@ fn set_env(name: String, value: String) -> Nil {
 }
 
 @external(erlang, "os", "putenv")
-fn ffi_putenv(
-  name: charlist.Charlist,
-  value: charlist.Charlist,
-) -> Bool
+fn ffi_putenv(name: charlist.Charlist, value: charlist.Charlist) -> Bool
 
 pub fn load_config_from_env_test() {
   set_env("ANTHROPIC_API_KEY", "env-key")
