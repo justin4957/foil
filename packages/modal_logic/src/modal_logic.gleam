@@ -4,13 +4,16 @@
 //// - Modal propositions (alethic, deontic, epistemic)
 //// - Arguments and formalizations
 //// - Logic systems (K, T, S4, S5, KD, etc.)
+//// - Persistence layer with PostgreSQL and caching
 ////
 //// ## Quick Start
 ////
 //// ```gleam
 //// import modal_logic/proposition.{Atom, Necessary, Implies}
+//// import modal_logic/argument.{new_argument, new_formalization}
 ////
 //// let proposition = Implies(Atom("p"), Necessary(Atom("q")))
+//// let arg = new_argument("arg-1", "All men are mortal")
 //// ```
 
 import modal_logic/argument
@@ -36,5 +39,14 @@ pub type Formalization =
 pub type ValidationResult =
   argument.ValidationResult
 
+pub type ValidationRecord =
+  argument.ValidationRecord
+
 pub type Ambiguity =
   argument.Ambiguity
+
+pub type RepairSuggestion =
+  argument.RepairSuggestion
+
+pub type RepairType =
+  argument.RepairType
