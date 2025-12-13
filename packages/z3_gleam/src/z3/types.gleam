@@ -14,6 +14,7 @@ pub type Expr {
   // Literals
   BoolLit(Bool)
   IntLit(Int)
+  RealLit(numerator: Int, denominator: Int)
 
   // Variables/Constants
   Const(name: String, sort: Sort)
@@ -25,6 +26,9 @@ pub type Expr {
   Implies(Expr, Expr)
   Iff(Expr, Expr)
 
+  // Control flow
+  Ite(condition: Expr, then_branch: Expr, else_branch: Expr)
+
   // Quantifiers
   ForAll(vars: List(#(String, Sort)), body: Expr)
   Exists(vars: List(#(String, Sort)), body: Expr)
@@ -34,6 +38,7 @@ pub type Expr {
   Mul(List(Expr))
   Sub(Expr, Expr)
   Div(Expr, Expr)
+  Neg(Expr)
 
   // Comparisons
   Eq(Expr, Expr)
@@ -51,7 +56,10 @@ pub type CheckResult {
 }
 
 /// Model represents a satisfying assignment
-pub type Model
+/// Contains a list of variable-value pairs
+pub type Model {
+  Model(values: List(#(String, Value)))
+}
 
 /// Value represents a concrete value from a model
 pub type Value {
