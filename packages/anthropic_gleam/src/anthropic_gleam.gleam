@@ -42,10 +42,15 @@
 import anthropic/api
 import anthropic/client
 import anthropic/config
+import anthropic/streaming/accumulator
+import anthropic/streaming/decoder
+import anthropic/streaming/handler
+import anthropic/streaming/sse
 import anthropic/testing
 import anthropic/types/error
 import anthropic/types/message
 import anthropic/types/request
+import anthropic/types/streaming
 
 // Re-export types for easier access
 pub type Role =
@@ -357,3 +362,196 @@ pub const fixture_stop_sequence_response = testing.fixture_stop_sequence_respons
 
 // Re-export integration test helpers
 pub const has_api_key = testing.has_api_key
+
+// =============================================================================
+// Streaming Types (from anthropic/types/streaming)
+// =============================================================================
+
+// Re-export streaming event types
+pub type StreamEvent =
+  streaming.StreamEvent
+
+pub type TextDelta =
+  streaming.TextDelta
+
+pub type InputJsonDelta =
+  streaming.InputJsonDelta
+
+pub type ContentBlockDelta =
+  streaming.ContentBlockDelta
+
+pub type MessageStart =
+  streaming.MessageStart
+
+pub type ContentBlockStart =
+  streaming.ContentBlockStart
+
+pub type ContentBlockDeltaEvent =
+  streaming.ContentBlockDeltaEvent
+
+pub type ContentBlockStop =
+  streaming.ContentBlockStop
+
+pub type MessageDelta =
+  streaming.MessageDelta
+
+pub type MessageDeltaEvent =
+  streaming.MessageDeltaEvent
+
+pub type MessageDeltaUsage =
+  streaming.MessageDeltaUsage
+
+pub type StreamError =
+  streaming.StreamError
+
+// Re-export streaming constructors
+pub const text_delta = streaming.text_delta
+
+pub const input_json_delta = streaming.input_json_delta
+
+pub const text_delta_event = streaming.text_delta_event
+
+pub const input_json_delta_event = streaming.input_json_delta_event
+
+pub const message_start = streaming.message_start
+
+pub const text_block_start = streaming.text_block_start
+
+pub const tool_use_block_start = streaming.tool_use_block_start
+
+pub const content_block_stop = streaming.content_block_stop
+
+pub const message_delta_event = streaming.message_delta_event
+
+pub const stream_error = streaming.stream_error
+
+// Re-export streaming utilities
+pub const event_type_string = streaming.event_type_string
+
+pub const event_type_from_string = streaming.event_type_from_string
+
+pub const is_terminal_event = streaming.is_terminal_event
+
+pub const get_delta_text = streaming.get_delta_text
+
+pub const get_delta_json = streaming.get_delta_json
+
+// =============================================================================
+// SSE Parser (from anthropic/streaming/sse)
+// =============================================================================
+
+// Re-export SSE types
+pub type SseEvent =
+  sse.SseEvent
+
+pub type SseParserState =
+  sse.SseParserState
+
+pub type SseParseResult =
+  sse.SseParseResult
+
+pub type SseError =
+  sse.SseError
+
+// Re-export SSE functions
+pub const new_parser_state = sse.new_parser_state
+
+pub const reset_event_state = sse.reset_event_state
+
+pub const parse_event = sse.parse_event
+
+pub const parse_event_lines = sse.parse_event_lines
+
+pub const parse_line = sse.parse_line
+
+pub const parse_chunk = sse.parse_chunk
+
+pub const flush = sse.flush
+
+pub const is_keepalive = sse.is_keepalive
+
+pub const get_event_type = sse.get_event_type
+
+pub const get_data = sse.get_data
+
+pub const sse_event = sse.sse_event
+
+pub const sse_event_full = sse.sse_event_full
+
+// =============================================================================
+// Streaming Decoder (from anthropic/streaming/decoder)
+// =============================================================================
+
+// Re-export decoder types
+pub type DecodeError =
+  decoder.DecodeError
+
+// Re-export decoder functions
+pub const decode_event = decoder.decode_event
+
+// =============================================================================
+// Streaming Handler (from anthropic/streaming/handler)
+// =============================================================================
+
+// Re-export handler types
+pub type StreamResult =
+  handler.StreamResult
+
+pub type StreamHandlerError =
+  handler.StreamError
+
+pub type EventCallback =
+  handler.EventCallback
+
+// Re-export handler functions
+pub const stream_message = handler.stream_message
+
+pub const stream_message_with_callback = handler.stream_message_with_callback
+
+pub const get_text_deltas = handler.get_text_deltas
+
+pub const get_full_text = handler.get_full_text
+
+pub const get_message_id = handler.get_message_id
+
+pub const get_model = handler.get_model
+
+pub const stream_is_complete = handler.is_complete
+
+pub const stream_has_error = handler.has_error
+
+pub const get_stream_error = handler.get_error
+
+// =============================================================================
+// Stream Accumulator (from anthropic/streaming/accumulator)
+// =============================================================================
+
+// Re-export accumulator types
+pub type AccumulatorState =
+  accumulator.AccumulatorState
+
+pub type ContentBlockState =
+  accumulator.ContentBlockState
+
+// Re-export accumulator functions
+pub const new_accumulator = accumulator.new
+
+pub const process_event = accumulator.process_event
+
+pub const process_events = accumulator.process_events
+
+pub const process_events_with_callback = accumulator.process_events_with_callback
+
+pub const build_response = accumulator.build_response
+
+pub const accumulate = accumulator.accumulate
+
+pub const get_accumulated_text = accumulator.get_accumulated_text
+
+pub const get_accumulated_tool_inputs = accumulator.get_accumulated_tool_inputs
+
+pub const accumulator_has_content = accumulator.has_content
+
+pub const accumulator_has_error = accumulator.has_error
+
+pub const total_tokens = accumulator.total_tokens

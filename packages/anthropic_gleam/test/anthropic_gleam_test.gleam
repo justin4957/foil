@@ -1456,3 +1456,729 @@ pub fn has_api_key_without_key_test() {
   let result = has_api_key()
   assert result == False
 }
+
+// =============================================================================
+// Streaming Types Tests
+// =============================================================================
+
+import anthropic/types/streaming.{
+  ContentBlockDeltaEventVariant, ContentBlockStartEvent, ContentBlockStopEvent,
+  ErrorEvent, InputJsonContentDelta, InputJsonDelta, MessageDeltaEventVariant,
+  MessageStartEvent, MessageStopEvent, PingEvent, TextContentDelta, TextDelta,
+  content_block_stop, event_type_from_string, event_type_string, get_delta_json,
+  get_delta_text, input_json_delta, input_json_delta_event, is_terminal_event,
+  message_delta_event, message_start, stream_error, text_block_start, text_delta,
+  text_delta_event, tool_use_block_start,
+}
+
+pub fn text_delta_constructor_test() {
+  let delta = text_delta("Hello")
+  assert delta.text == "Hello"
+}
+
+pub fn input_json_delta_constructor_test() {
+  let delta = input_json_delta("{\"key\":")
+  assert delta.partial_json == "{\"key\":"
+}
+
+pub fn message_start_constructor_test() {
+  let msg = message_start("msg_123", Assistant, "claude-3-5-haiku", 10)
+  assert msg.id == "msg_123"
+  assert msg.role == Assistant
+  assert msg.model == "claude-3-5-haiku"
+  assert msg.usage.input_tokens == 10
+}
+
+pub fn text_block_start_constructor_test() {
+  let start = text_block_start(0)
+  assert start.index == 0
+  let assert TextBlock(text: t) = start.content_block
+  assert t == ""
+}
+
+pub fn tool_use_block_start_constructor_test() {
+  let start = tool_use_block_start(1, "tool_123", "get_weather")
+  assert start.index == 1
+  let assert ToolUseBlock(id: id, name: name, input: input) =
+    start.content_block
+  assert id == "tool_123"
+  assert name == "get_weather"
+  assert input == ""
+}
+
+pub fn text_delta_event_constructor_test() {
+  let event = text_delta_event(0, "Hello")
+  assert event.index == 0
+  let assert TextContentDelta(delta) = event.delta
+  assert delta.text == "Hello"
+}
+
+pub fn input_json_delta_event_constructor_test() {
+  let event = input_json_delta_event(1, "{\"location\":")
+  assert event.index == 1
+  let assert InputJsonContentDelta(delta) = event.delta
+  assert delta.partial_json == "{\"location\":"
+}
+
+pub fn content_block_stop_constructor_test() {
+  let stop = content_block_stop(0)
+  assert stop.index == 0
+}
+
+pub fn message_delta_event_constructor_test() {
+  let event = message_delta_event(Some(EndTurn), None, 50)
+  assert event.delta.stop_reason == Some(EndTurn)
+  assert event.delta.stop_sequence == None
+  assert event.usage.output_tokens == 50
+}
+
+pub fn stream_error_constructor_test() {
+  let err = stream_error("overloaded_error", "Server overloaded")
+  assert err.error_type == "overloaded_error"
+  assert err.message == "Server overloaded"
+}
+
+pub fn event_type_string_message_start_test() {
+  let event =
+    MessageStartEvent(message: message_start("id", Assistant, "model", 0))
+  assert event_type_string(event) == "message_start"
+}
+
+pub fn event_type_string_content_block_start_test() {
+  let event = ContentBlockStartEvent(content_block_start: text_block_start(0))
+  assert event_type_string(event) == "content_block_start"
+}
+
+pub fn event_type_string_content_block_delta_test() {
+  let event =
+    ContentBlockDeltaEventVariant(content_block_delta: text_delta_event(
+      0,
+      "text",
+    ))
+  assert event_type_string(event) == "content_block_delta"
+}
+
+pub fn event_type_string_content_block_stop_test() {
+  let event = ContentBlockStopEvent(content_block_stop: content_block_stop(0))
+  assert event_type_string(event) == "content_block_stop"
+}
+
+pub fn event_type_string_message_delta_test() {
+  let event =
+    MessageDeltaEventVariant(message_delta: message_delta_event(
+      Some(EndTurn),
+      None,
+      10,
+    ))
+  assert event_type_string(event) == "message_delta"
+}
+
+pub fn event_type_string_message_stop_test() {
+  assert event_type_string(MessageStopEvent) == "message_stop"
+}
+
+pub fn event_type_string_ping_test() {
+  assert event_type_string(PingEvent) == "ping"
+}
+
+pub fn event_type_string_error_test() {
+  let event = ErrorEvent(error: stream_error("error", "msg"))
+  assert event_type_string(event) == "error"
+}
+
+pub fn event_type_from_string_valid_test() {
+  assert event_type_from_string("message_start") == Ok("message_start")
+  assert event_type_from_string("content_block_start")
+    == Ok("content_block_start")
+  assert event_type_from_string("content_block_delta")
+    == Ok("content_block_delta")
+  assert event_type_from_string("content_block_stop")
+    == Ok("content_block_stop")
+  assert event_type_from_string("message_delta") == Ok("message_delta")
+  assert event_type_from_string("message_stop") == Ok("message_stop")
+  assert event_type_from_string("ping") == Ok("ping")
+  assert event_type_from_string("error") == Ok("error")
+}
+
+pub fn event_type_from_string_invalid_test() {
+  let result = event_type_from_string("unknown")
+  assert result == Error("Unknown event type: unknown")
+}
+
+pub fn is_terminal_event_message_stop_test() {
+  assert is_terminal_event(MessageStopEvent) == True
+}
+
+pub fn is_terminal_event_error_test() {
+  let event = ErrorEvent(error: stream_error("error", "msg"))
+  assert is_terminal_event(event) == True
+}
+
+pub fn is_terminal_event_ping_test() {
+  assert is_terminal_event(PingEvent) == False
+}
+
+pub fn get_delta_text_from_text_delta_test() {
+  let delta = TextContentDelta(TextDelta(text: "Hello"))
+  assert get_delta_text(delta) == Some("Hello")
+}
+
+pub fn get_delta_text_from_json_delta_test() {
+  let delta = InputJsonContentDelta(InputJsonDelta(partial_json: "{}"))
+  assert get_delta_text(delta) == None
+}
+
+pub fn get_delta_json_from_json_delta_test() {
+  let delta = InputJsonContentDelta(InputJsonDelta(partial_json: "{\"key\":"))
+  assert get_delta_json(delta) == Some("{\"key\":")
+}
+
+pub fn get_delta_json_from_text_delta_test() {
+  let delta = TextContentDelta(TextDelta(text: "Hello"))
+  assert get_delta_json(delta) == None
+}
+
+// =============================================================================
+// SSE Parser Tests
+// =============================================================================
+
+import anthropic/streaming/sse.{
+  EmptyEvent, flush, get_data, get_event_type, is_keepalive, new_parser_state,
+  parse_chunk, parse_event, parse_event_lines, parse_line, sse_event,
+}
+
+pub fn sse_parse_simple_event_test() {
+  let event_str = "event: message_start\ndata: {\"type\":\"message_start\"}"
+  let assert Ok(event) = parse_event(event_str)
+  assert event.event_type == Some("message_start")
+  assert event.data == Some("{\"type\":\"message_start\"}")
+}
+
+pub fn sse_parse_data_only_event_test() {
+  let event_str = "data: {\"text\":\"hello\"}"
+  let assert Ok(event) = parse_event(event_str)
+  assert event.event_type == None
+  assert event.data == Some("{\"text\":\"hello\"}")
+}
+
+pub fn sse_parse_multiline_data_test() {
+  let event_str = "data: line1\ndata: line2\ndata: line3"
+  let assert Ok(event) = parse_event(event_str)
+  assert event.data == Some("line1\nline2\nline3")
+}
+
+pub fn sse_parse_event_with_comment_test() {
+  let event_str = ": this is a comment\nevent: test\ndata: value"
+  let assert Ok(event) = parse_event(event_str)
+  assert event.event_type == Some("test")
+  assert event.data == Some("value")
+}
+
+pub fn sse_parse_empty_event_test() {
+  let event_str = ""
+  let result = parse_event(event_str)
+  assert result == Error(EmptyEvent)
+}
+
+pub fn sse_parse_event_lines_test() {
+  let lines = ["event: test", "data: hello"]
+  let assert Ok(event) = parse_event_lines(lines)
+  assert event.event_type == Some("test")
+  assert event.data == Some("hello")
+}
+
+pub fn sse_parse_line_updates_state_test() {
+  let state = new_parser_state()
+  let state = parse_line(state, "event: test_event")
+  assert state.current_event_type == Some("test_event")
+}
+
+pub fn sse_parse_chunk_single_event_test() {
+  let chunk = "event: ping\ndata: {}\n\n"
+  let result = parse_chunk(new_parser_state(), chunk)
+  assert list.length(result.events) == 1
+  let assert [event] = result.events
+  assert event.event_type == Some("ping")
+}
+
+pub fn sse_parse_chunk_multiple_events_test() {
+  let chunk =
+    "event: message_start\ndata: {\"id\":1}\n\nevent: content_block_start\ndata: {\"id\":2}\n\n"
+  let result = parse_chunk(new_parser_state(), chunk)
+  assert list.length(result.events) == 2
+}
+
+pub fn sse_parse_chunk_partial_event_test() {
+  let chunk = "event: test\ndata: partial"
+  let result = parse_chunk(new_parser_state(), chunk)
+  assert result.events == []
+  // Buffer should contain the partial event
+  assert result.state.buffer != ""
+}
+
+pub fn sse_flush_with_data_test() {
+  let state =
+    sse.SseParserState(
+      current_event_type: None,
+      current_data: [],
+      current_id: None,
+      current_retry: None,
+      buffer: "event: final\ndata: {\"done\":true}",
+    )
+  let assert Ok(event) = flush(state)
+  assert event.event_type == Some("final")
+}
+
+pub fn sse_flush_empty_buffer_test() {
+  let state = new_parser_state()
+  let result = flush(state)
+  assert result == Error(EmptyEvent)
+}
+
+pub fn sse_is_keepalive_ping_test() {
+  let event = sse_event(Some("ping"), None)
+  assert is_keepalive(event) == True
+}
+
+pub fn sse_is_keepalive_empty_test() {
+  let event = sse_event(None, None)
+  assert is_keepalive(event) == True
+}
+
+pub fn sse_is_keepalive_data_test() {
+  let event = sse_event(Some("message_start"), Some("{}"))
+  assert is_keepalive(event) == False
+}
+
+pub fn sse_get_event_type_with_type_test() {
+  let event = sse_event(Some("message_start"), Some("{}"))
+  assert get_event_type(event) == "message_start"
+}
+
+pub fn sse_get_event_type_without_type_test() {
+  let event = sse_event(None, Some("{}"))
+  assert get_event_type(event) == "message"
+}
+
+pub fn sse_get_data_with_data_test() {
+  let event = sse_event(Some("test"), Some("{\"key\":\"value\"}"))
+  assert get_data(event) == "{\"key\":\"value\"}"
+}
+
+pub fn sse_get_data_without_data_test() {
+  let event = sse_event(Some("ping"), None)
+  assert get_data(event) == ""
+}
+
+// =============================================================================
+// Streaming Decoder Tests
+// =============================================================================
+
+import anthropic/streaming/decoder.{
+  JsonParseError, UnknownEventType, decode_event,
+}
+
+pub fn decode_ping_event_test() {
+  let sse_event = sse_event(Some("ping"), None)
+  let assert Ok(event) = decode_event(sse_event)
+  assert event == PingEvent
+}
+
+pub fn decode_message_stop_event_test() {
+  let sse_event = sse_event(Some("message_stop"), None)
+  let assert Ok(event) = decode_event(sse_event)
+  assert event == MessageStopEvent
+}
+
+pub fn decode_message_start_event_test() {
+  let data =
+    "{\"type\":\"message_start\",\"message\":{\"id\":\"msg_123\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-3\",\"usage\":{\"input_tokens\":10}}}"
+  let sse_event = sse_event(Some("message_start"), Some(data))
+  let assert Ok(MessageStartEvent(msg)) = decode_event(sse_event)
+  assert msg.id == "msg_123"
+  assert msg.model == "claude-3"
+  assert msg.usage.input_tokens == 10
+}
+
+pub fn decode_content_block_start_text_test() {
+  let data =
+    "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}"
+  let sse_event = sse_event(Some("content_block_start"), Some(data))
+  let assert Ok(ContentBlockStartEvent(start)) = decode_event(sse_event)
+  assert start.index == 0
+  let assert TextBlock(text: t) = start.content_block
+  assert t == ""
+}
+
+pub fn decode_content_block_start_tool_use_test() {
+  let data =
+    "{\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"tool_123\",\"name\":\"get_weather\"}}"
+  let sse_event = sse_event(Some("content_block_start"), Some(data))
+  let assert Ok(ContentBlockStartEvent(start)) = decode_event(sse_event)
+  assert start.index == 1
+  let assert ToolUseBlock(id: id, name: name, input: _) = start.content_block
+  assert id == "tool_123"
+  assert name == "get_weather"
+}
+
+pub fn decode_content_block_delta_text_test() {
+  let data =
+    "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}"
+  let sse_event = sse_event(Some("content_block_delta"), Some(data))
+  let assert Ok(ContentBlockDeltaEventVariant(delta_event)) =
+    decode_event(sse_event)
+  assert delta_event.index == 0
+  let assert TextContentDelta(delta) = delta_event.delta
+  assert delta.text == "Hello"
+}
+
+pub fn decode_content_block_delta_json_test() {
+  let data =
+    "{\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"loc\\\"\"}}"
+  let sse_event = sse_event(Some("content_block_delta"), Some(data))
+  let assert Ok(ContentBlockDeltaEventVariant(delta_event)) =
+    decode_event(sse_event)
+  assert delta_event.index == 1
+  let assert InputJsonContentDelta(delta) = delta_event.delta
+  assert delta.partial_json == "{\"loc\""
+}
+
+pub fn decode_content_block_stop_test() {
+  let data = "{\"type\":\"content_block_stop\",\"index\":0}"
+  let sse_event = sse_event(Some("content_block_stop"), Some(data))
+  let assert Ok(ContentBlockStopEvent(stop)) = decode_event(sse_event)
+  assert stop.index == 0
+}
+
+pub fn decode_message_delta_test() {
+  let data =
+    "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":25}}"
+  let sse_event = sse_event(Some("message_delta"), Some(data))
+  let assert Ok(MessageDeltaEventVariant(delta)) = decode_event(sse_event)
+  assert delta.delta.stop_reason == Some(EndTurn)
+  assert delta.usage.output_tokens == 25
+}
+
+pub fn decode_error_event_test() {
+  let data =
+    "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Server busy\"}}"
+  let sse_event = sse_event(Some("error"), Some(data))
+  let assert Ok(ErrorEvent(err)) = decode_event(sse_event)
+  assert err.error_type == "overloaded_error"
+  assert err.message == "Server busy"
+}
+
+pub fn decode_unknown_event_type_test() {
+  let sse_event = sse_event(Some("unknown_event"), Some("{}"))
+  let assert Error(UnknownEventType(t)) = decode_event(sse_event)
+  assert t == "unknown_event"
+}
+
+pub fn decode_invalid_json_test() {
+  let sse_event = sse_event(Some("message_start"), Some("not valid json"))
+  let assert Error(JsonParseError(_)) = decode_event(sse_event)
+}
+
+// =============================================================================
+// Stream Accumulator Tests
+// =============================================================================
+
+import anthropic/streaming/accumulator.{
+  accumulate, build_response, get_accumulated_text, has_content,
+  has_error as accumulator_has_error, new as new_accumulator, process_event,
+  process_events, total_tokens,
+}
+
+pub fn accumulator_new_test() {
+  let state = new_accumulator()
+  assert state.id == None
+  assert state.is_complete == False
+  assert state.input_tokens == 0
+  assert state.output_tokens == 0
+}
+
+pub fn accumulator_process_message_start_test() {
+  let state = new_accumulator()
+  let event =
+    MessageStartEvent(message: message_start(
+      "msg_123",
+      Assistant,
+      "claude-3",
+      15,
+    ))
+  let state = process_event(state, event)
+  assert state.id == Some("msg_123")
+  assert state.model == Some("claude-3")
+  assert state.input_tokens == 15
+}
+
+pub fn accumulator_process_content_block_start_test() {
+  let state = new_accumulator()
+  let event = ContentBlockStartEvent(content_block_start: text_block_start(0))
+  let state = process_event(state, event)
+  assert has_content(state) == True
+}
+
+pub fn accumulator_process_content_block_delta_test() {
+  let state = new_accumulator()
+  let start_event =
+    ContentBlockStartEvent(content_block_start: text_block_start(0))
+  let delta_event =
+    ContentBlockDeltaEventVariant(content_block_delta: text_delta_event(
+      0,
+      "Hello",
+    ))
+  let state = process_event(state, start_event)
+  let state = process_event(state, delta_event)
+  assert get_accumulated_text(state) == "Hello"
+}
+
+pub fn accumulator_process_multiple_deltas_test() {
+  let state = new_accumulator()
+  let start_event =
+    ContentBlockStartEvent(content_block_start: text_block_start(0))
+  let delta1 =
+    ContentBlockDeltaEventVariant(content_block_delta: text_delta_event(
+      0,
+      "Hello",
+    ))
+  let delta2 =
+    ContentBlockDeltaEventVariant(content_block_delta: text_delta_event(
+      0,
+      " World",
+    ))
+  let state = process_event(state, start_event)
+  let state = process_event(state, delta1)
+  let state = process_event(state, delta2)
+  assert get_accumulated_text(state) == "Hello World"
+}
+
+pub fn accumulator_process_message_delta_test() {
+  let state = new_accumulator()
+  let event =
+    MessageDeltaEventVariant(message_delta: message_delta_event(
+      Some(EndTurn),
+      None,
+      50,
+    ))
+  let state = process_event(state, event)
+  assert state.stop_reason == Some(EndTurn)
+  assert state.output_tokens == 50
+}
+
+pub fn accumulator_process_message_stop_test() {
+  let state = new_accumulator()
+  let event = MessageStopEvent
+  let state = process_event(state, event)
+  assert state.is_complete == True
+}
+
+pub fn accumulator_process_ping_test() {
+  let state = new_accumulator()
+  let event = PingEvent
+  let new_state = process_event(state, event)
+  // Ping should not change state
+  assert new_state.id == state.id
+  assert new_state.is_complete == state.is_complete
+}
+
+pub fn accumulator_process_error_test() {
+  let state = new_accumulator()
+  let event = ErrorEvent(error: stream_error("error", "Something went wrong"))
+  let state = process_event(state, event)
+  assert accumulator_has_error(state) == True
+}
+
+pub fn accumulator_process_events_test() {
+  let events = [
+    MessageStartEvent(message: message_start("msg_1", Assistant, "claude-3", 10)),
+    ContentBlockStartEvent(content_block_start: text_block_start(0)),
+    ContentBlockDeltaEventVariant(content_block_delta: text_delta_event(0, "Hi")),
+    ContentBlockStopEvent(content_block_stop: content_block_stop(0)),
+    MessageDeltaEventVariant(message_delta: message_delta_event(
+      Some(EndTurn),
+      None,
+      5,
+    )),
+    MessageStopEvent,
+  ]
+  let state = process_events(events)
+  assert state.id == Some("msg_1")
+  assert state.is_complete == True
+  assert get_accumulated_text(state) == "Hi"
+  assert state.input_tokens == 10
+  assert state.output_tokens == 5
+}
+
+pub fn accumulator_build_response_test() {
+  let events = [
+    MessageStartEvent(message: message_start(
+      "msg_build",
+      Assistant,
+      "claude-3",
+      20,
+    )),
+    ContentBlockStartEvent(content_block_start: text_block_start(0)),
+    ContentBlockDeltaEventVariant(content_block_delta: text_delta_event(
+      0,
+      "Response text",
+    )),
+    ContentBlockStopEvent(content_block_stop: content_block_stop(0)),
+    MessageDeltaEventVariant(message_delta: message_delta_event(
+      Some(EndTurn),
+      None,
+      15,
+    )),
+    MessageStopEvent,
+  ]
+  let state = process_events(events)
+  let assert Ok(response) = build_response(state)
+  assert response.id == "msg_build"
+  assert response.model == "claude-3"
+  assert response.stop_reason == Some(EndTurn)
+  assert response.usage.input_tokens == 20
+  assert response.usage.output_tokens == 15
+  assert response_text(response) == "Response text"
+}
+
+pub fn accumulator_build_response_missing_id_test() {
+  let state = new_accumulator()
+  let result = build_response(state)
+  assert result == Error("Missing message ID")
+}
+
+pub fn accumulate_convenience_test() {
+  let events = [
+    MessageStartEvent(message: message_start("msg_acc", Assistant, "model", 5)),
+    ContentBlockStartEvent(content_block_start: text_block_start(0)),
+    ContentBlockDeltaEventVariant(content_block_delta: text_delta_event(
+      0,
+      "Test",
+    )),
+    MessageDeltaEventVariant(message_delta: message_delta_event(
+      Some(EndTurn),
+      None,
+      3,
+    )),
+    MessageStopEvent,
+  ]
+  let assert Ok(response) = accumulate(events)
+  assert response.id == "msg_acc"
+  assert response_text(response) == "Test"
+}
+
+pub fn accumulator_total_tokens_test() {
+  let state = new_accumulator()
+  let event1 =
+    MessageStartEvent(message: message_start("id", Assistant, "model", 100))
+  let event2 =
+    MessageDeltaEventVariant(message_delta: message_delta_event(
+      Some(EndTurn),
+      None,
+      50,
+    ))
+  let state = process_event(state, event1)
+  let state = process_event(state, event2)
+  assert total_tokens(state) == 150
+}
+
+// =============================================================================
+// Streaming Handler Tests
+// =============================================================================
+
+import anthropic/streaming/handler.{
+  get_full_text, get_message_id, get_model, get_text_deltas,
+  has_error as stream_has_error, is_complete,
+}
+
+pub fn handler_get_text_deltas_test() {
+  let events = [
+    ContentBlockDeltaEventVariant(content_block_delta: text_delta_event(
+      0,
+      "Hello",
+    )),
+    ContentBlockDeltaEventVariant(content_block_delta: text_delta_event(0, " ")),
+    ContentBlockDeltaEventVariant(content_block_delta: text_delta_event(
+      0,
+      "World",
+    )),
+  ]
+  let deltas = get_text_deltas(events)
+  assert deltas == ["Hello", " ", "World"]
+}
+
+pub fn handler_get_full_text_test() {
+  let events = [
+    ContentBlockDeltaEventVariant(content_block_delta: text_delta_event(
+      0,
+      "Hello",
+    )),
+    ContentBlockDeltaEventVariant(content_block_delta: text_delta_event(0, " ")),
+    ContentBlockDeltaEventVariant(content_block_delta: text_delta_event(
+      0,
+      "World",
+    )),
+  ]
+  assert get_full_text(events) == "Hello World"
+}
+
+pub fn handler_get_message_id_test() {
+  let events = [
+    MessageStartEvent(message: message_start(
+      "msg_handler",
+      Assistant,
+      "model",
+      0,
+    )),
+    MessageStopEvent,
+  ]
+  assert get_message_id(events) == Ok("msg_handler")
+}
+
+pub fn handler_get_message_id_missing_test() {
+  let events = [MessageStopEvent]
+  assert get_message_id(events) == Error(Nil)
+}
+
+pub fn handler_get_model_test() {
+  let events = [
+    MessageStartEvent(message: message_start(
+      "id",
+      Assistant,
+      "claude-3-5-haiku",
+      0,
+    )),
+  ]
+  assert get_model(events) == Ok("claude-3-5-haiku")
+}
+
+pub fn handler_is_complete_true_test() {
+  let events = [
+    MessageStartEvent(message: message_start("id", Assistant, "model", 0)),
+    MessageStopEvent,
+  ]
+  assert is_complete(events) == True
+}
+
+pub fn handler_is_complete_false_test() {
+  let events = [
+    MessageStartEvent(message: message_start("id", Assistant, "model", 0)),
+  ]
+  assert is_complete(events) == False
+}
+
+pub fn handler_has_error_true_test() {
+  let events = [
+    MessageStartEvent(message: message_start("id", Assistant, "model", 0)),
+    ErrorEvent(error: stream_error("error", "oops")),
+  ]
+  assert stream_has_error(events) == True
+}
+
+pub fn handler_has_error_false_test() {
+  let events = [
+    MessageStartEvent(message: message_start("id", Assistant, "model", 0)),
+    MessageStopEvent,
+  ]
+  assert stream_has_error(events) == False
+}
