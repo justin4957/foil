@@ -3,6 +3,22 @@ import anthropic/config.{
   load_config, with_api_key, with_base_url, with_default_model, with_max_retries,
   with_timeout_ms,
 }
+import anthropic/hooks.{
+  ContentBlockDelta, ContentBlockStart, ContentBlockStop, MessageDelta,
+  MessageStart, MessageStop, RequestEndEvent, RequestStartEvent, RetryEvent,
+  StreamClosed, StreamError, StreamEvent, StreamOpened, combine_hooks,
+  default_hooks, emit_request_end, emit_request_start, emit_retry,
+  emit_stream_event, generate_request_id, has_hooks, metrics_hooks, no_hooks,
+  simple_logging_hooks, summarize_request, with_on_request_end,
+  with_on_request_start, with_on_retry, with_on_stream_event,
+}
+import anthropic/hooks as hooks_module
+import anthropic/retry.{
+  RetryConfig, aggressive_retry_config, calculate_delay, default_retry_config,
+  no_retry_config, with_backoff_multiplier, with_base_delay_ms,
+  with_jitter_factor, with_max_delay_ms,
+}
+import anthropic/retry as retry_module
 import anthropic/types/error.{
   ApiError, AuthenticationError, ConfigError, HttpError, InternalApiError,
   InvalidRequestError, JsonError, NetworkError, NotFoundError, OverloadedError,
@@ -43,6 +59,16 @@ import anthropic/types/tool.{
   tool_choice_to_json, tool_failure, tool_name_choice, tool_success,
   tool_to_json, tool_to_json_string, tool_with_description, tools_to_json,
 }
+import anthropic/validation.{
+  MaxTokensField, MessagesField, ModelField, StopSequencesField, SystemField,
+  TemperatureField, ToolsField, TopKField, TopPField, errors_to_string,
+  field_to_string, get_model_limits, is_valid, validate_content_blocks,
+  validate_max_tokens, validate_messages, validate_model, validate_or_error,
+  validate_request, validate_stop_sequences, validate_system,
+  validate_temperature, validate_tools, validate_top_k, validate_top_p,
+  validation_error, validation_error_with_value,
+}
+import anthropic/validation as validation_module
 import gleam/erlang/charlist
 import gleam/json
 import gleam/list
@@ -2838,4 +2864,686 @@ pub fn tool_builder_validated_empty_name_test() {
     |> build_validated
 
   assert result == Error(builder.EmptyName)
+}
+
+// =============================================================================
+// Retry Logic Tests
+// =============================================================================
+
+pub fn retry_default_config_test() {
+  let config = default_retry_config()
+  assert config.max_retries == 3
+  assert config.base_delay_ms == 1000
+  assert config.max_delay_ms == 60_000
+  assert config.backoff_multiplier == 2.0
+}
+
+pub fn retry_aggressive_config_test() {
+  let config = aggressive_retry_config()
+  assert config.max_retries == 5
+  assert config.base_delay_ms == 500
+}
+
+pub fn retry_no_retry_config_test() {
+  let config = no_retry_config()
+  assert config.max_retries == 0
+}
+
+pub fn retry_config_with_max_retries_test() {
+  let config =
+    default_retry_config()
+    |> retry_module.with_max_retries(10)
+  assert config.max_retries == 10
+}
+
+pub fn retry_config_with_base_delay_test() {
+  let config =
+    default_retry_config()
+    |> with_base_delay_ms(2000)
+  assert config.base_delay_ms == 2000
+}
+
+pub fn retry_config_with_max_delay_test() {
+  let config =
+    default_retry_config()
+    |> with_max_delay_ms(60_000)
+  assert config.max_delay_ms == 60_000
+}
+
+pub fn retry_config_with_jitter_test() {
+  let config =
+    default_retry_config()
+    |> with_jitter_factor(0.5)
+  assert config.jitter_factor == 0.5
+}
+
+pub fn retry_config_with_backoff_test() {
+  let config =
+    default_retry_config()
+    |> with_backoff_multiplier(3.0)
+  assert config.backoff_multiplier == 3.0
+}
+
+pub fn retry_calculate_delay_test() {
+  let config =
+    RetryConfig(
+      max_retries: 3,
+      base_delay_ms: 1000,
+      max_delay_ms: 30_000,
+      jitter_factor: 0.0,
+      backoff_multiplier: 2.0,
+    )
+  // First retry: 1000ms
+  assert calculate_delay(config, 0) == 1000
+  // Second retry: 2000ms
+  assert calculate_delay(config, 1) == 2000
+  // Third retry: 4000ms
+  assert calculate_delay(config, 2) == 4000
+}
+
+pub fn retry_calculate_delay_capped_test() {
+  let config =
+    RetryConfig(
+      max_retries: 10,
+      base_delay_ms: 1000,
+      max_delay_ms: 5000,
+      jitter_factor: 0.0,
+      backoff_multiplier: 2.0,
+    )
+  // Fifth retry would be 16000ms but capped at 5000ms
+  assert calculate_delay(config, 4) == 5000
+}
+
+pub fn retry_is_retryable_rate_limit_test() {
+  let err = rate_limit_error("Rate limited")
+  assert is_retryable(err) == True
+}
+
+pub fn retry_is_retryable_overloaded_test() {
+  let err = overloaded_error("Overloaded")
+  assert is_retryable(err) == True
+}
+
+pub fn retry_is_retryable_internal_test() {
+  let err = internal_api_error("Internal error")
+  assert is_retryable(err) == True
+}
+
+pub fn retry_is_retryable_timeout_test() {
+  let err = timeout_error(30_000)
+  assert is_retryable(err) == True
+}
+
+pub fn retry_is_retryable_network_test() {
+  let err = network_error("Connection failed")
+  assert is_retryable(err) == True
+}
+
+pub fn retry_is_not_retryable_auth_test() {
+  let err = authentication_error("Invalid API key")
+  assert is_retryable(err) == False
+}
+
+pub fn retry_is_not_retryable_invalid_request_test() {
+  let err = invalid_request_error("Bad request")
+  assert is_retryable(err) == False
+}
+
+// =============================================================================
+// Validation Tests
+// =============================================================================
+
+pub fn validation_field_to_string_test() {
+  assert field_to_string(MessagesField) == "messages"
+  assert field_to_string(ModelField) == "model"
+  assert field_to_string(MaxTokensField) == "max_tokens"
+  assert field_to_string(TemperatureField) == "temperature"
+  assert field_to_string(TopPField) == "top_p"
+  assert field_to_string(TopKField) == "top_k"
+  assert field_to_string(SystemField) == "system"
+  assert field_to_string(StopSequencesField) == "stop_sequences"
+  assert field_to_string(ToolsField) == "tools"
+}
+
+pub fn validation_error_constructor_test() {
+  let err = validation_error(MessagesField, "messages cannot be empty")
+  assert err.field == MessagesField
+  assert err.message == "messages cannot be empty"
+  assert err.value == None
+}
+
+pub fn validation_error_with_value_constructor_test() {
+  let err =
+    validation_error_with_value(
+      MaxTokensField,
+      "max_tokens must be positive",
+      "-1",
+    )
+  assert err.field == MaxTokensField
+  assert err.message == "max_tokens must be positive"
+  assert err.value == Some("-1")
+}
+
+pub fn validation_error_to_string_test() {
+  let err = validation_error(MessagesField, "messages cannot be empty")
+  let result = validation_module.error_to_string(err)
+  assert result == "messages: messages cannot be empty"
+}
+
+pub fn validation_error_to_string_with_value_test() {
+  let err =
+    validation_error_with_value(
+      MaxTokensField,
+      "max_tokens must be positive",
+      "-1",
+    )
+  let result = validation_module.error_to_string(err)
+  assert result == "max_tokens: max_tokens must be positive (got: -1)"
+}
+
+pub fn validation_errors_to_string_test() {
+  let errors = [
+    validation_error(MessagesField, "messages cannot be empty"),
+    validation_error(ModelField, "model name cannot be empty"),
+  ]
+  let result = errors_to_string(errors)
+  assert string.contains(result, "messages")
+  assert string.contains(result, "model")
+}
+
+pub fn validate_messages_empty_test() {
+  let result = validate_messages([])
+  assert result != Ok(Nil)
+}
+
+pub fn validate_messages_valid_test() {
+  let messages = [user_message("Hello")]
+  let result = validate_messages(messages)
+  assert result == Ok(Nil)
+}
+
+pub fn validate_messages_alternation_test() {
+  let messages = [
+    user_message("Hello"),
+    assistant_message("Hi there!"),
+    user_message("How are you?"),
+  ]
+  let result = validate_messages(messages)
+  assert result == Ok(Nil)
+}
+
+pub fn validate_messages_wrong_start_test() {
+  // Starting with assistant message should fail
+  let messages = [assistant_message("Hi")]
+  let result = validate_messages(messages)
+  assert result != Ok(Nil)
+}
+
+pub fn validate_model_empty_test() {
+  let result = validate_model("")
+  assert result != Ok(Nil)
+}
+
+pub fn validate_model_valid_test() {
+  let result = validate_model("claude-sonnet-4-20250514")
+  assert result == Ok(Nil)
+}
+
+pub fn validate_model_with_special_chars_test() {
+  let result = validate_model("claude-3.5-sonnet-20241022")
+  assert result == Ok(Nil)
+}
+
+pub fn validate_max_tokens_valid_test() {
+  let result = validate_max_tokens(1024, "claude-sonnet-4-20250514")
+  assert result == Ok(Nil)
+}
+
+pub fn validate_max_tokens_zero_test() {
+  let result = validate_max_tokens(0, "claude-sonnet-4-20250514")
+  assert result != Ok(Nil)
+}
+
+pub fn validate_max_tokens_negative_test() {
+  let result = validate_max_tokens(-1, "claude-sonnet-4-20250514")
+  assert result != Ok(Nil)
+}
+
+pub fn validate_temperature_valid_test() {
+  let result = validate_temperature(Some(0.7))
+  assert result == Ok(Nil)
+}
+
+pub fn validate_temperature_none_test() {
+  let result = validate_temperature(None)
+  assert result == Ok(Nil)
+}
+
+pub fn validate_temperature_zero_test() {
+  let result = validate_temperature(Some(0.0))
+  assert result == Ok(Nil)
+}
+
+pub fn validate_temperature_one_test() {
+  let result = validate_temperature(Some(1.0))
+  assert result == Ok(Nil)
+}
+
+pub fn validate_temperature_out_of_range_test() {
+  let result = validate_temperature(Some(1.5))
+  assert result != Ok(Nil)
+}
+
+pub fn validate_temperature_negative_test() {
+  let result = validate_temperature(Some(-0.5))
+  assert result != Ok(Nil)
+}
+
+pub fn validate_top_p_valid_test() {
+  let result = validate_top_p(Some(0.9))
+  assert result == Ok(Nil)
+}
+
+pub fn validate_top_p_none_test() {
+  let result = validate_top_p(None)
+  assert result == Ok(Nil)
+}
+
+pub fn validate_top_p_out_of_range_test() {
+  let result = validate_top_p(Some(2.0))
+  assert result != Ok(Nil)
+}
+
+pub fn validate_top_k_valid_test() {
+  let result = validate_top_k(Some(40))
+  assert result == Ok(Nil)
+}
+
+pub fn validate_top_k_none_test() {
+  let result = validate_top_k(None)
+  assert result == Ok(Nil)
+}
+
+pub fn validate_top_k_zero_test() {
+  let result = validate_top_k(Some(0))
+  assert result != Ok(Nil)
+}
+
+pub fn validate_top_k_negative_test() {
+  let result = validate_top_k(Some(-1))
+  assert result != Ok(Nil)
+}
+
+pub fn validate_system_valid_test() {
+  let result = validate_system(Some("You are a helpful assistant."))
+  assert result == Ok(Nil)
+}
+
+pub fn validate_system_none_test() {
+  let result = validate_system(None)
+  assert result == Ok(Nil)
+}
+
+pub fn validate_system_empty_test() {
+  let result = validate_system(Some(""))
+  assert result != Ok(Nil)
+}
+
+pub fn validate_system_whitespace_test() {
+  let result = validate_system(Some("   "))
+  assert result != Ok(Nil)
+}
+
+pub fn validate_stop_sequences_valid_test() {
+  let result = validate_stop_sequences(Some(["END", "STOP"]))
+  assert result == Ok(Nil)
+}
+
+pub fn validate_stop_sequences_none_test() {
+  let result = validate_stop_sequences(None)
+  assert result == Ok(Nil)
+}
+
+pub fn validate_stop_sequences_empty_item_test() {
+  let result = validate_stop_sequences(Some(["END", ""]))
+  assert result != Ok(Nil)
+}
+
+pub fn validate_tools_valid_test() {
+  let tools = [tool("get_weather", empty_input_schema())]
+  let result = validate_tools(Some(tools))
+  assert result == Ok(Nil)
+}
+
+pub fn validate_tools_none_test() {
+  let result = validate_tools(None)
+  assert result == Ok(Nil)
+}
+
+pub fn validate_tools_empty_name_test() {
+  let tools = [tool("", empty_input_schema())]
+  let result = validate_tools(Some(tools))
+  assert result != Ok(Nil)
+}
+
+pub fn validate_request_valid_test() {
+  let request =
+    create_request("claude-sonnet-4-20250514", [user_message("Hello")], 1024)
+  let result = validate_request(request)
+  assert result == Ok(Nil)
+}
+
+pub fn validate_request_invalid_test() {
+  let request = create_request("", [], 0)
+  let result = validate_request(request)
+  assert result != Ok(Nil)
+}
+
+pub fn is_valid_true_test() {
+  let request =
+    create_request("claude-sonnet-4-20250514", [user_message("Hello")], 1024)
+  assert is_valid(request) == True
+}
+
+pub fn is_valid_false_test() {
+  let request = create_request("", [], 0)
+  assert is_valid(request) == False
+}
+
+pub fn validate_or_error_success_test() {
+  let request =
+    create_request("claude-sonnet-4-20250514", [user_message("Hello")], 1024)
+  let result = validate_or_error(request)
+  assert result == Ok(request)
+}
+
+pub fn validate_or_error_failure_test() {
+  let request = create_request("", [], 0)
+  let result = validate_or_error(request)
+  case result {
+    Ok(_) -> Nil
+    Error(_) -> Nil
+  }
+  // Just verify we get an Error (it would be Ok for a valid request)
+  assert result != Ok(request)
+}
+
+pub fn validate_content_blocks_valid_test() {
+  let blocks = [TextBlock(text: "Hello")]
+  let result = validate_content_blocks(blocks)
+  assert result == Ok(Nil)
+}
+
+pub fn validate_content_blocks_empty_test() {
+  let result = validate_content_blocks([])
+  assert result != Ok(Nil)
+}
+
+pub fn validate_content_blocks_empty_text_test() {
+  let blocks = [TextBlock(text: "")]
+  let result = validate_content_blocks(blocks)
+  assert result != Ok(Nil)
+}
+
+pub fn get_model_limits_opus_test() {
+  let limits = get_model_limits("claude-3-opus-20240229")
+  assert limits.max_tokens == 4096
+  assert limits.context_window == 200_000
+}
+
+pub fn get_model_limits_sonnet_test() {
+  let limits = get_model_limits("claude-sonnet-4-20250514")
+  assert limits.max_tokens == 8192
+}
+
+pub fn get_model_limits_haiku_test() {
+  let limits = get_model_limits("claude-3-5-haiku-20241022")
+  assert limits.max_tokens == 8192
+}
+
+// =============================================================================
+// Hooks Tests
+// =============================================================================
+
+pub fn hooks_default_test() {
+  let h = default_hooks()
+  assert h.on_request_start == None
+  assert h.on_request_end == None
+  assert h.on_retry == None
+  assert h.on_stream_event == None
+}
+
+pub fn hooks_no_hooks_test() {
+  let h = no_hooks()
+  assert h.on_request_start == None
+  assert h.on_request_end == None
+}
+
+pub fn hooks_has_hooks_false_test() {
+  let h = default_hooks()
+  assert has_hooks(h) == False
+}
+
+pub fn hooks_has_hooks_true_test() {
+  let h =
+    default_hooks()
+    |> with_on_request_start(fn(_) { Nil })
+  assert has_hooks(h) == True
+}
+
+pub fn hooks_with_on_request_start_test() {
+  let h =
+    default_hooks()
+    |> with_on_request_start(fn(_) { Nil })
+  assert h.on_request_start != None
+}
+
+pub fn hooks_with_on_request_end_test() {
+  let h =
+    default_hooks()
+    |> with_on_request_end(fn(_) { Nil })
+  assert h.on_request_end != None
+}
+
+pub fn hooks_with_on_retry_test() {
+  let h =
+    default_hooks()
+    |> with_on_retry(fn(_) { Nil })
+  assert h.on_retry != None
+}
+
+pub fn hooks_with_on_stream_event_test() {
+  let h =
+    default_hooks()
+    |> with_on_stream_event(fn(_) { Nil })
+  assert h.on_stream_event != None
+}
+
+pub fn hooks_combine_both_none_test() {
+  let first = default_hooks()
+  let second = default_hooks()
+  let combined = combine_hooks(first, second)
+  assert combined.on_request_start == None
+}
+
+pub fn hooks_combine_first_some_test() {
+  let first = default_hooks() |> with_on_request_start(fn(_) { Nil })
+  let second = default_hooks()
+  let combined = combine_hooks(first, second)
+  assert combined.on_request_start != None
+}
+
+pub fn hooks_combine_second_some_test() {
+  let first = default_hooks()
+  let second = default_hooks() |> with_on_request_start(fn(_) { Nil })
+  let combined = combine_hooks(first, second)
+  assert combined.on_request_start != None
+}
+
+pub fn hooks_combine_both_some_test() {
+  let first = default_hooks() |> with_on_request_start(fn(_) { Nil })
+  let second = default_hooks() |> with_on_request_start(fn(_) { Nil })
+  let combined = combine_hooks(first, second)
+  assert combined.on_request_start != None
+}
+
+pub fn hooks_emit_request_start_with_callback_test() {
+  // This tests that emit doesn't crash when callback is set
+  let h = default_hooks() |> with_on_request_start(fn(_) { Nil })
+  let event =
+    RequestStartEvent(
+      endpoint: "/v1/messages",
+      request: hooks_module.RequestSummary(
+        model: "claude-sonnet-4-20250514",
+        message_count: 1,
+        max_tokens: 1024,
+        stream: False,
+        tool_count: 0,
+        has_system: False,
+      ),
+      timestamp_ms: 0,
+      request_id: "req_123",
+    )
+  emit_request_start(h, event)
+  // If we get here, it didn't crash
+  assert True
+}
+
+pub fn hooks_emit_request_start_without_callback_test() {
+  let h = default_hooks()
+  let event =
+    RequestStartEvent(
+      endpoint: "/v1/messages",
+      request: hooks_module.RequestSummary(
+        model: "claude-sonnet-4-20250514",
+        message_count: 1,
+        max_tokens: 1024,
+        stream: False,
+        tool_count: 0,
+        has_system: False,
+      ),
+      timestamp_ms: 0,
+      request_id: "req_123",
+    )
+  emit_request_start(h, event)
+  assert True
+}
+
+pub fn hooks_emit_request_end_test() {
+  let h = default_hooks() |> with_on_request_end(fn(_) { Nil })
+  let event =
+    RequestEndEvent(
+      endpoint: "/v1/messages",
+      duration_ms: 100,
+      success: True,
+      response: None,
+      error: None,
+      request_id: "req_123",
+      retry_count: 0,
+    )
+  emit_request_end(h, event)
+  assert True
+}
+
+pub fn hooks_emit_retry_test() {
+  let h = default_hooks() |> with_on_retry(fn(_) { Nil })
+  let event =
+    RetryEvent(
+      endpoint: "/v1/messages",
+      attempt: 1,
+      max_attempts: 3,
+      delay_ms: 1000,
+      error: rate_limit_error("Rate limited"),
+      request_id: "req_123",
+    )
+  emit_retry(h, event)
+  assert True
+}
+
+pub fn hooks_emit_stream_event_test() {
+  let h = default_hooks() |> with_on_stream_event(fn(_) { Nil })
+  let event =
+    StreamEvent(
+      event_type: StreamOpened,
+      request_id: "req_123",
+      timestamp_ms: 0,
+    )
+  emit_stream_event(h, event)
+  assert True
+}
+
+pub fn hooks_generate_request_id_test() {
+  let id1 = generate_request_id()
+  let id2 = generate_request_id()
+  // IDs should start with "req_"
+  assert string.starts_with(id1, "req_")
+  assert string.starts_with(id2, "req_")
+}
+
+pub fn hooks_summarize_request_test() {
+  let request =
+    create_request("claude-sonnet-4-20250514", [user_message("Hello")], 1024)
+  let summary = summarize_request(request)
+  assert summary.model == "claude-sonnet-4-20250514"
+  assert summary.message_count == 1
+  assert summary.max_tokens == 1024
+  assert summary.stream == False
+  assert summary.tool_count == 0
+  assert summary.has_system == False
+}
+
+pub fn hooks_summarize_request_with_options_test() {
+  let request =
+    create_request(
+      "claude-sonnet-4-20250514",
+      [user_message("Hello"), assistant_message("Hi"), user_message("Bye")],
+      2048,
+    )
+    |> with_stream(True)
+    |> with_system("You are helpful")
+    |> with_tools([tool("test_tool", empty_input_schema())])
+  let summary = summarize_request(request)
+  assert summary.message_count == 3
+  assert summary.max_tokens == 2048
+  assert summary.stream == True
+  assert summary.tool_count == 1
+  assert summary.has_system == True
+}
+
+pub fn hooks_simple_logging_hooks_test() {
+  let h = simple_logging_hooks()
+  // Should have request start, end, and retry hooks
+  assert h.on_request_start != None
+  assert h.on_request_end != None
+  assert h.on_retry != None
+}
+
+pub fn hooks_metrics_hooks_test() {
+  let h = metrics_hooks(fn(_, _) { Nil })
+  // Should have request end hook for metrics
+  assert h.on_request_end != None
+}
+
+pub fn hooks_stream_event_type_test() {
+  // Test stream event types construction
+  let opened = StreamOpened
+  let msg_start = MessageStart
+  let block_start = ContentBlockStart(index: 0)
+  let block_delta = ContentBlockDelta(index: 0, delta_type: "text_delta")
+  let block_stop = ContentBlockStop(index: 0)
+  let msg_delta = MessageDelta
+  let msg_stop = MessageStop
+  let closed = StreamClosed
+  let err = StreamError(error: "connection lost")
+
+  // Just verify they can be constructed and have expected values
+  assert opened == StreamOpened
+  assert msg_start == MessageStart
+  assert block_start == ContentBlockStart(index: 0)
+  assert block_delta == ContentBlockDelta(index: 0, delta_type: "text_delta")
+  assert block_stop == ContentBlockStop(index: 0)
+  assert msg_delta == MessageDelta
+  assert msg_stop == MessageStop
+  assert closed == StreamClosed
+  assert err == StreamError(error: "connection lost")
 }
