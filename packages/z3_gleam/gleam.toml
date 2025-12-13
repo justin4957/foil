@@ -1,0 +1,14 @@
+name = "z3_gleam"
+version = "0.1.0"
+
+description = "Gleam bindings to Z3 theorem prover for SMT solving, constraint solving, and modal logic verification"
+licences = ["MIT"]
+repository = { type = "github", user = "coolbeans", repo = "foil" }
+
+[dependencies]
+gleam_stdlib = ">= 0.44.0 and < 2.0.0"
+gleam_json = ">= 2.0.0 and < 3.0.0"
+gleam_erlang = ">= 0.30.0 and < 1.0.0"
+
+[dev-dependencies]
+gleeunit = ">= 1.0.0 and < 2.0.0"
