@@ -9,7 +9,8 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
 import modal_logic/testing/metrics/test_report.{
-  type BaselineComparison, type ReportSummary, type TestReport, BaselineComparison,
+  type BaselineComparison, type ReportSummary, type TestReport,
+  BaselineComparison,
 }
 
 /// Persisted test run record
@@ -168,7 +169,11 @@ pub fn calculate_trend(store: TestStore, count: Int) -> Trend {
         _ -> Stable
       }
 
-      Trend(direction: direction, change: change, runs_analyzed: list.length(runs))
+      Trend(
+        direction: direction,
+        change: change,
+        runs_analyzed: list.length(runs),
+      )
     }
   }
 }

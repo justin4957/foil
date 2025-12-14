@@ -232,7 +232,8 @@ fn compare_translation(
   expected_premises: List(Proposition),
   expected_conclusion: Proposition,
 ) -> TranslationMatch {
-  let conclusion_matches = propositions_equal(actual_conclusion, expected_conclusion)
+  let conclusion_matches =
+    propositions_equal(actual_conclusion, expected_conclusion)
 
   let premise_matches =
     list.zip(actual_premises, expected_premises)
@@ -245,11 +246,18 @@ fn compare_translation(
   let total_expected = list.length(expected_premises)
   let total_actual = list.length(actual_premises)
 
-  case conclusion_matches, premise_matches == total_expected && total_expected == total_actual {
+  case
+    conclusion_matches,
+    premise_matches == total_expected && total_expected == total_actual
+  {
     True, True -> ExactTranslation
     True, False ->
       case premise_matches > 0 {
-        True -> PartialTranslation(matched_premises: premise_matches, total_premises: total_expected)
+        True ->
+          PartialTranslation(
+            matched_premises: premise_matches,
+            total_premises: total_expected,
+          )
         False -> ConclusionOnly
       }
     False, _ -> NoTranslation
@@ -278,9 +286,12 @@ fn propositions_equal(a: Proposition, b: Proposition) -> Bool {
   case a, b {
     Atom(n1), Atom(n2) -> n1 == n2
     Not(p1), Not(p2) -> propositions_equal(p1, p2)
-    And(l1, r1), And(l2, r2) -> propositions_equal(l1, l2) && propositions_equal(r1, r2)
-    Or(l1, r1), Or(l2, r2) -> propositions_equal(l1, l2) && propositions_equal(r1, r2)
-    Implies(l1, r1), Implies(l2, r2) -> propositions_equal(l1, l2) && propositions_equal(r1, r2)
+    And(l1, r1), And(l2, r2) ->
+      propositions_equal(l1, l2) && propositions_equal(r1, r2)
+    Or(l1, r1), Or(l2, r2) ->
+      propositions_equal(l1, l2) && propositions_equal(r1, r2)
+    Implies(l1, r1), Implies(l2, r2) ->
+      propositions_equal(l1, l2) && propositions_equal(r1, r2)
     Necessary(p1), Necessary(p2) -> propositions_equal(p1, p2)
     Possible(p1), Possible(p2) -> propositions_equal(p1, p2)
     Obligatory(p1), Obligatory(p2) -> propositions_equal(p1, p2)
@@ -292,7 +303,9 @@ fn propositions_equal(a: Proposition, b: Proposition) -> Bool {
 }
 
 /// Compute aggregate metrics from individual results
-fn compute_aggregate_metrics(results: List(AccuracyTestResult)) -> AccuracyResults {
+fn compute_aggregate_metrics(
+  results: List(AccuracyTestResult),
+) -> AccuracyResults {
   let total = list.length(results)
 
   // Translation metrics
@@ -353,7 +366,10 @@ fn compute_aggregate_metrics(results: List(AccuracyTestResult)) -> AccuracyResul
       true_negatives: 0,
       false_positives: 0,
       false_negatives: total - validation_correct,
-      precision: safe_divide(int.to_float(validation_correct), int.to_float(total)),
+      precision: safe_divide(
+        int.to_float(validation_correct),
+        int.to_float(total),
+      ),
       recall: 1.0,
       f1_score: safe_divide(
         int.to_float(2 * validation_correct),
@@ -441,8 +457,7 @@ fn mean_confidence(results: List(AccuracyTestResult)) -> Float {
   case results {
     [] -> 0.0
     _ -> {
-      let sum =
-        list.fold(results, 0.0, fn(acc, r) { acc +. r.confidence })
+      let sum = list.fold(results, 0.0, fn(acc, r) { acc +. r.confidence })
       sum /. int.to_float(list.length(results))
     }
   }
@@ -492,7 +507,10 @@ pub fn format_report(results: AccuracyResults) -> String {
     "  Correct: ",
     int.to_string(results.logic_detection.correct),
     " (",
-    format_percent(results.logic_detection.correct, results.logic_detection.total),
+    format_percent(
+      results.logic_detection.correct,
+      results.logic_detection.total,
+    ),
     ")\n",
     "\n",
     "## Validation Accuracy\n",

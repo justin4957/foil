@@ -322,7 +322,10 @@ fn load_atlas_mock(config: DatasetConfig) -> HuggingFaceDataset {
 /// Get available datasets
 pub fn available_datasets() -> List(#(String, String)) {
   [
-    #("tasksource/folio", "First Order Logic Inference Open-domain (~1,435 examples)"),
+    #(
+      "tasksource/folio",
+      "First Order Logic Inference Open-domain (~1,435 examples)",
+    ),
     #(
       "AtlasUnified/Atlas-Reasoning",
       "Syllogistic arguments and philosophical debates",

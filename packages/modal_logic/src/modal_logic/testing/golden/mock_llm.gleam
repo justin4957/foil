@@ -68,11 +68,7 @@ pub type MockLLM {
 
 /// Statistics about mock LLM usage
 pub type MockStats {
-  MockStats(
-    cache_hits: Int,
-    cache_misses: Int,
-    fallback_used: Int,
-  )
+  MockStats(cache_hits: Int, cache_misses: Int, fallback_used: Int)
 }
 
 /// Create a new mock LLM with pre-loaded responses
@@ -117,8 +113,14 @@ pub fn translate(
             MockStats(..mock.stats, cache_misses: mock.stats.cache_misses + 1)
           let updated_missing = [natural_language, ..mock.missing_inputs]
           #(
-            MockLLM(..mock, stats: updated_stats, missing_inputs: updated_missing),
-            Error("No cached response for input: " <> truncate(natural_language, 50)),
+            MockLLM(
+              ..mock,
+              stats: updated_stats,
+              missing_inputs: updated_missing,
+            ),
+            Error(
+              "No cached response for input: " <> truncate(natural_language, 50),
+            ),
           )
         }
         Recording -> {
@@ -128,8 +130,15 @@ pub fn translate(
             MockStats(..mock.stats, cache_misses: mock.stats.cache_misses + 1)
           let updated_missing = [natural_language, ..mock.missing_inputs]
           #(
-            MockLLM(..mock, stats: updated_stats, missing_inputs: updated_missing),
-            Error("Recording mode: would call real LLM for: " <> truncate(natural_language, 50)),
+            MockLLM(
+              ..mock,
+              stats: updated_stats,
+              missing_inputs: updated_missing,
+            ),
+            Error(
+              "Recording mode: would call real LLM for: "
+              <> truncate(natural_language, 50),
+            ),
           )
         }
         PlaybackWithFallback -> {
@@ -146,7 +155,8 @@ pub fn translate(
 
 /// Add a response to the mock LLM bank
 pub fn add_response(mock: MockLLM, response: MockResponse) -> MockLLM {
-  let updated_responses = dict.insert(mock.responses, response.input_hash, response)
+  let updated_responses =
+    dict.insert(mock.responses, response.input_hash, response)
   MockLLM(..mock, responses: updated_responses)
 }
 
@@ -194,16 +204,29 @@ fn generate_fallback_response(natural_language: String) -> MockResponse {
   let lower = string.lowercase(natural_language)
 
   // Detect modal operators from keywords
-  let has_necessary = string.contains(lower, "necessarily") || string.contains(lower, "must be")
-  let has_possible = string.contains(lower, "possibly") || string.contains(lower, "might be")
-  let has_knows = string.contains(lower, "knows") || string.contains(lower, "knowledge")
-  let has_believes = string.contains(lower, "believes") || string.contains(lower, "belief")
-  let has_ought = string.contains(lower, "ought") || string.contains(lower, "should")
-  let has_permitted = string.contains(lower, "permitted") || string.contains(lower, "allowed")
+  let has_necessary =
+    string.contains(lower, "necessarily") || string.contains(lower, "must be")
+  let has_possible =
+    string.contains(lower, "possibly") || string.contains(lower, "might be")
+  let has_knows =
+    string.contains(lower, "knows") || string.contains(lower, "knowledge")
+  let has_believes =
+    string.contains(lower, "believes") || string.contains(lower, "belief")
+  let has_ought =
+    string.contains(lower, "ought") || string.contains(lower, "should")
+  let has_permitted =
+    string.contains(lower, "permitted") || string.contains(lower, "allowed")
 
   // Generate a simple proposition based on detected modalities
   let base_prop = Atom("p")
-  let wrapped_prop = case has_necessary, has_possible, has_knows, has_believes, has_ought, has_permitted {
+  let wrapped_prop = case
+    has_necessary,
+    has_possible,
+    has_knows,
+    has_believes,
+    has_ought,
+    has_permitted
+  {
     True, _, _, _, _, _ -> Necessary(base_prop)
     _, True, _, _, _, _ -> Possible(base_prop)
     _, _, True, _, _, _ -> Knows("agent", base_prop)
@@ -214,8 +237,10 @@ fn generate_fallback_response(natural_language: String) -> MockResponse {
   }
 
   // Detect implication structure
-  let has_therefore = string.contains(lower, "therefore") || string.contains(lower, "thus")
-  let has_if_then = string.contains(lower, "if") && string.contains(lower, "then")
+  let has_therefore =
+    string.contains(lower, "therefore") || string.contains(lower, "thus")
+  let has_if_then =
+    string.contains(lower, "if") && string.contains(lower, "then")
 
   let conclusion = case has_if_then {
     True -> Implies(wrapped_prop, Atom("q"))
@@ -301,7 +326,7 @@ fn load_response_bank() -> Dict(String, MockResponse) {
         Atom("promised"),
       ],
       Obligatory(Atom("help")),
-      0.90,
+      0.9,
     ),
     // Epistemic reasoning
     create_response(
@@ -387,9 +412,7 @@ fn load_response_bank() -> Dict(String, MockResponse) {
   ]
 
   responses
-  |> list.fold(dict.new(), fn(d, resp) {
-    dict.insert(d, resp.input_hash, resp)
-  })
+  |> list.fold(dict.new(), fn(d, resp) { dict.insert(d, resp.input_hash, resp) })
 }
 
 /// Helper to create a mock response

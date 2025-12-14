@@ -9,8 +9,8 @@ import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
 import modal_logic/proposition.{
-  type Proposition, type LogicSystem, And, Atom, Implies, K, Knows,
-  Necessary, Not, Obligatory, Or, Possible, S5, T,
+  type LogicSystem, type Proposition, And, Atom, Implies, K, Knows, Necessary,
+  Not, Obligatory, Or, Possible, S5, T,
 }
 import modal_logic/testing/external/huggingface_loader.{
   type DatasetExample, type ExampleLabel, type HuggingFaceDataset, Contradiction,
@@ -18,9 +18,8 @@ import modal_logic/testing/external/huggingface_loader.{
 }
 import modal_logic/testing/fixtures/fixtures.{type TestFixture, TestFixture}
 import modal_logic/testing/test_config.{
-  type Difficulty, type ExpectedValidity, Easy,
-  ExpectedEither, ExpectedInvalid, ExpectedValid, ExternalDataset, Hard, Medium,
-  Unknown as UnknownValidity,
+  type Difficulty, type ExpectedValidity, Easy, ExpectedEither, ExpectedInvalid,
+  ExpectedValid, ExternalDataset, Hard, Medium, Unknown as UnknownValidity,
 }
 
 /// Convert a HuggingFace dataset to test fixtures
@@ -30,7 +29,10 @@ pub fn dataset_to_fixtures(dataset: HuggingFaceDataset) -> List(TestFixture) {
 }
 
 /// Convert a single example to a test fixture
-pub fn example_to_fixture(example: DatasetExample, source: String) -> TestFixture {
+pub fn example_to_fixture(
+  example: DatasetExample,
+  source: String,
+) -> TestFixture {
   // Combine premises into natural language
   let natural_language =
     list.append(example.premises, [
@@ -121,7 +123,8 @@ fn parse_example(example: DatasetExample) -> #(List(Proposition), Proposition) {
     example.premises
     |> list.index_map(fn(premise, idx) { parse_sentence(premise, idx) })
 
-  let conclusion = parse_sentence(example.conclusion, list.length(example.premises))
+  let conclusion =
+    parse_sentence(example.conclusion, list.length(example.premises))
 
   #(premises, conclusion)
 }
@@ -133,26 +136,17 @@ fn parse_sentence(sentence: String, index: Int) -> Proposition {
 
   // Detect logical structure
   case detect_sentence_structure(lower) {
-    Universal(subject, predicate) ->
-      Implies(Atom(subject), Atom(predicate))
-    Existential(subject, predicate) ->
-      And(Atom(subject), Atom(predicate))
+    Universal(subject, predicate) -> Implies(Atom(subject), Atom(predicate))
+    Existential(subject, predicate) -> And(Atom(subject), Atom(predicate))
     Conditional(antecedent, consequent) ->
       Implies(Atom(antecedent), Atom(consequent))
-    Negation(inner) ->
-      Not(Atom(inner))
-    Necessity(inner) ->
-      Necessary(Atom(inner))
-    Possibility(inner) ->
-      Possible(Atom(inner))
-    Deontic(inner) ->
-      Obligatory(Atom(inner))
-    Epistemic(agent, inner) ->
-      Knows(agent, Atom(inner))
-    Disjunction(left, right) ->
-      Or(Atom(left), Atom(right))
-    Simple ->
-      Atom(base_atom)
+    Negation(inner) -> Not(Atom(inner))
+    Necessity(inner) -> Necessary(Atom(inner))
+    Possibility(inner) -> Possible(Atom(inner))
+    Deontic(inner) -> Obligatory(Atom(inner))
+    Epistemic(agent, inner) -> Knows(agent, Atom(inner))
+    Disjunction(left, right) -> Or(Atom(left), Atom(right))
+    Simple -> Atom(base_atom)
   }
 }
 
@@ -199,7 +193,10 @@ fn detect_sentence_structure(text: String) -> SentenceStructure {
                 subject
                 |> string.replace("some ", "")
                 |> string.trim
-              Existential(subject: subject_clean, predicate: string.trim(predicate))
+              Existential(
+                subject: subject_clean,
+                predicate: string.trim(predicate),
+              )
             }
             _ -> Simple
           }
@@ -215,7 +212,10 @@ fn detect_sentence_structure(text: String) -> SentenceStructure {
                     ant
                     |> string.replace("if ", "")
                     |> string.trim
-                  Conditional(antecedent: ant_clean, consequent: string.trim(cons))
+                  Conditional(
+                    antecedent: ant_clean,
+                    consequent: string.trim(cons),
+                  )
                 }
                 _ -> Simple
               }

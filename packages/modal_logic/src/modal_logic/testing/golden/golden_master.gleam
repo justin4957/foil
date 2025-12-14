@@ -119,7 +119,8 @@ pub fn compare(
   case dict.get(store.snapshots, fixture_id) {
     Error(_) -> NoBaseline
     Ok([]) -> NoBaseline
-    Ok(snapshots) -> compare_against_snapshots(snapshots, premises, conclusion, 0)
+    Ok(snapshots) ->
+      compare_against_snapshots(snapshots, premises, conclusion, 0)
   }
 }
 
@@ -174,14 +175,19 @@ fn compute_differences(
       let #(expected, actual) = pair
       case propositions_equal(expected, actual) {
         True -> None
-        False -> Some(PremiseDiff(index: idx, expected: expected, actual: actual))
+        False ->
+          Some(PremiseDiff(index: idx, expected: expected, actual: actual))
       }
     })
     |> list.filter_map(fn(x) { option.to_result(x, Nil) })
 
-  let conclusion_diff = case propositions_equal(snapshot.approved_conclusion, conclusion) {
+  let conclusion_diff = case
+    propositions_equal(snapshot.approved_conclusion, conclusion)
+  {
     True -> []
-    False -> [ConclusionDiff(expected: snapshot.approved_conclusion, actual: conclusion)]
+    False -> [
+      ConclusionDiff(expected: snapshot.approved_conclusion, actual: conclusion),
+    ]
   }
 
   list.flatten([premise_count_diff, premise_diffs, conclusion_diff])
@@ -198,10 +204,14 @@ fn propositions_equal(a: Proposition, b: Proposition) -> Bool {
       propositions_equal(l1, l2) && propositions_equal(r1, r2)
     proposition.Implies(l1, r1), proposition.Implies(l2, r2) ->
       propositions_equal(l1, l2) && propositions_equal(r1, r2)
-    proposition.Necessary(p1), proposition.Necessary(p2) -> propositions_equal(p1, p2)
-    proposition.Possible(p1), proposition.Possible(p2) -> propositions_equal(p1, p2)
-    proposition.Obligatory(p1), proposition.Obligatory(p2) -> propositions_equal(p1, p2)
-    proposition.Permitted(p1), proposition.Permitted(p2) -> propositions_equal(p1, p2)
+    proposition.Necessary(p1), proposition.Necessary(p2) ->
+      propositions_equal(p1, p2)
+    proposition.Possible(p1), proposition.Possible(p2) ->
+      propositions_equal(p1, p2)
+    proposition.Obligatory(p1), proposition.Obligatory(p2) ->
+      propositions_equal(p1, p2)
+    proposition.Permitted(p1), proposition.Permitted(p2) ->
+      propositions_equal(p1, p2)
     proposition.Knows(a1, p1), proposition.Knows(a2, p2) ->
       a1 == a2 && propositions_equal(p1, p2)
     proposition.Believes(a1, p1), proposition.Believes(a2, p2) ->
@@ -212,8 +222,10 @@ fn propositions_equal(a: Proposition, b: Proposition) -> Bool {
 
 /// Add a new golden snapshot
 pub fn add_snapshot(store: GoldenStore, snapshot: GoldenSnapshot) -> GoldenStore {
-  let existing = result.unwrap(dict.get(store.snapshots, snapshot.fixture_id), [])
-  let updated = dict.insert(store.snapshots, snapshot.fixture_id, [snapshot, ..existing])
+  let existing =
+    result.unwrap(dict.get(store.snapshots, snapshot.fixture_id), [])
+  let updated =
+    dict.insert(store.snapshots, snapshot.fixture_id, [snapshot, ..existing])
   let history_entry =
     HistoryEntry(
       timestamp: snapshot.approved_at,
@@ -221,7 +233,10 @@ pub fn add_snapshot(store: GoldenStore, snapshot: GoldenSnapshot) -> GoldenStore
       fixture_id: snapshot.fixture_id,
       notes: snapshot.notes,
     )
-  GoldenStore(..store, snapshots: updated, history: [history_entry, ..store.history])
+  GoldenStore(..store, snapshots: updated, history: [
+    history_entry,
+    ..store.history
+  ])
 }
 
 /// Update an existing golden snapshot
@@ -238,7 +253,10 @@ pub fn update_snapshot(
       fixture_id: fixture_id,
       notes: Some("Updated to version " <> int.to_string(new_snapshot.version)),
     )
-  GoldenStore(..store, snapshots: updated, history: [history_entry, ..store.history])
+  GoldenStore(..store, snapshots: updated, history: [
+    history_entry,
+    ..store.history
+  ])
 }
 
 /// Add a pending approval
@@ -298,7 +316,8 @@ pub fn approve_pending(
 
 /// Reject a pending item
 pub fn reject_pending(store: GoldenStore, fixture_id: String) -> GoldenStore {
-  let remaining = list.filter(store.pending, fn(p) { p.fixture_id != fixture_id })
+  let remaining =
+    list.filter(store.pending, fn(p) { p.fixture_id != fixture_id })
   let history_entry =
     HistoryEntry(
       timestamp: "now",
@@ -306,7 +325,10 @@ pub fn reject_pending(store: GoldenStore, fixture_id: String) -> GoldenStore {
       fixture_id: fixture_id,
       notes: None,
     )
-  GoldenStore(..store, pending: remaining, history: [history_entry, ..store.history])
+  GoldenStore(..store, pending: remaining, history: [
+    history_entry,
+    ..store.history
+  ])
 }
 
 /// Get all pending approvals
@@ -349,9 +371,10 @@ fn load_default_snapshots() -> Dict(String, List(GoldenSnapshot)) {
       id: "modal_modus_ponens_golden",
       fixture_id: "modal_modus_ponens",
       approved_premises: [
-        proposition.Necessary(
-          proposition.Implies(proposition.Atom("p"), proposition.Atom("q")),
-        ),
+        proposition.Necessary(proposition.Implies(
+          proposition.Atom("p"),
+          proposition.Atom("q"),
+        )),
         proposition.Necessary(proposition.Atom("p")),
       ],
       approved_conclusion: proposition.Necessary(proposition.Atom("q")),
@@ -382,7 +405,10 @@ fn load_default_snapshots() -> Dict(String, List(GoldenSnapshot)) {
         proposition.Implies(proposition.Atom("p"), proposition.Atom("q")),
         proposition.Implies(proposition.Atom("q"), proposition.Atom("r")),
       ],
-      approved_conclusion: proposition.Implies(proposition.Atom("p"), proposition.Atom("r")),
+      approved_conclusion: proposition.Implies(
+        proposition.Atom("p"),
+        proposition.Atom("r"),
+      ),
       approved_at: "2024-01-15T00:00:00Z",
       approved_by: "system",
       version: 1,
@@ -425,7 +451,9 @@ fn load_default_snapshots() -> Dict(String, List(GoldenSnapshot)) {
     GoldenSnapshot(
       id: "double_negation_golden",
       fixture_id: "double_negation",
-      approved_premises: [proposition.Not(proposition.Not(proposition.Atom("p")))],
+      approved_premises: [
+        proposition.Not(proposition.Not(proposition.Atom("p"))),
+      ],
       approved_conclusion: proposition.Atom("p"),
       approved_at: "2024-01-15T00:00:00Z",
       approved_by: "system",
@@ -437,7 +465,9 @@ fn load_default_snapshots() -> Dict(String, List(GoldenSnapshot)) {
       id: "s5_characteristic_golden",
       fixture_id: "s5_characteristic",
       approved_premises: [proposition.Possible(proposition.Atom("p"))],
-      approved_conclusion: proposition.Necessary(proposition.Possible(proposition.Atom("p"))),
+      approved_conclusion: proposition.Necessary(
+        proposition.Possible(proposition.Atom("p")),
+      ),
       approved_at: "2024-01-15T00:00:00Z",
       approved_by: "system",
       version: 1,
@@ -491,7 +521,8 @@ fn difference_to_string(diff: GoldenDifference) -> String {
       <> " vs "
       <> int.to_string(actual)
       <> ")"
-    PremiseDiff(index, _, _) -> "premise #" <> int.to_string(index + 1) <> " differs"
+    PremiseDiff(index, _, _) ->
+      "premise #" <> int.to_string(index + 1) <> " differs"
     ConclusionDiff(_, _) -> "conclusion differs"
   }
 }
