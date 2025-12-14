@@ -1,6 +1,11 @@
 # Modal Logic Engine
 
-A modal logic analysis system built in Gleam, combining LLM-based semantic translation with Z3-powered formal verification.
+[![Build Status](https://github.com/justin4957/foil/actions/workflows/ci.yml/badge.svg)](https://github.com/justin4957/foil/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+![AI Thinking](https://media.giphy.com/media/KVVgWtScb37USleUB3/giphy.gif)
+
+> A modal logic analysis system built in Gleam, combining LLM-based semantic translation with Z3-powered formal verification.
 
 ## Project Overview
 
@@ -8,64 +13,74 @@ This project analyzes natural language arguments using modal logic. It translate
 
 ### Core Principles
 
-1. **LLMs never assert validity** — they translate natural language to candidate logical structures
-2. **Symbolic engines are epistemically authoritative** — Z3 determines validity and generates countermodels
-3. **Persistence preserves modal plurality** — competing formalizations coexist; invalidity is informative
-4. **The execution loop is self-correcting** — failures trigger repair suggestions and re-validation
+| Principle | Description |
+|-----------|-------------|
+| **LLMs never assert validity** | They translate natural language to candidate logical structures |
+| **Symbolic engines are authoritative** | Z3 determines validity and generates countermodels |
+| **Persistence preserves plurality** | Competing formalizations coexist; invalidity is informative |
+| **Self-correcting execution** | Failures trigger repair suggestions and re-validation |
 
 ## Repository Structure
+
+![Brain Think](https://media.giphy.com/media/Iup13qWlzAqsBItALB/giphy.gif)
 
 This is a Gleam monorepo containing three development tracks:
 
 ```
-modal-logic-engine/
+foil/
 ├── packages/
-│   ├── anthropic_gleam/    # Track A: LLM client library (publishable)
-│   ├── z3_gleam/           # Track B: Z3 bindings (publishable)
-│   └── modal_logic/        # Shared domain types
-├── apps/
-│   └── analyst/            # Track C: Main application
+│   ├── anthropic_gleam/    # Track A: LLM client library
+│   ├── z3_gleam/           # Track B: Z3 bindings
+│   └── modal_logic/        # Track C: Modal logic analysis
 ├── docs/                   # Documentation
 └── scripts/                # Development scripts
 ```
 
-### Packages
+## Packages
 
-#### Track A: anthropic_gleam
-A well-typed, idiomatic Gleam client for Anthropic's Claude API with:
-- Typed message interfaces
-- Streaming response support
-- Tool use capabilities
-- **Status:** v0.1.0 - Initial structure
-- **Publishable to Hex:** Yes
+### Track A: anthropic_gleam
 
-#### Track B: z3_gleam
-Gleam bindings to the Z3 theorem prover with:
-- SMT solving
-- Modal logic encoding via Kripke frames
-- Countermodel extraction
-- **Status:** v0.1.0 - Initial structure
-- **Publishable to Hex:** Yes
+A well-typed, idiomatic Gleam client for Anthropic's Claude API.
 
-#### Track C: analyst
-The main application integrating LLM translation and Z3 validation:
-- Natural language argument analysis
-- Multiple formalization generation
-- Validity checking with countermodels
-- Repair suggestion system
-- **Status:** v0.1.0 - Initial structure
+| Feature | Status |
+|---------|--------|
+| Typed message interfaces | ✅ Complete |
+| Streaming response support | ✅ Complete |
+| Tool use capabilities | ✅ Complete |
+| Retry logic & validation | ✅ Complete |
+
+### Track B: z3_gleam
+
+Gleam bindings to the Z3 theorem prover.
+
+| Feature | Status |
+|---------|--------|
+| SMT solving | ✅ Complete |
+| Modal logic encoding | ✅ Complete |
+| Countermodel extraction | ✅ Complete |
+| Kripke frame support | ✅ Complete |
+
+### Track C: modal_logic
+
+The main modal logic analysis package.
+
+| Feature | Status |
+|---------|--------|
+| Domain types (propositions, arguments) | ✅ Complete |
+| LLM translation pipeline | ✅ Complete |
+| Validation & execution loop | ✅ Complete |
+| HTTP API, WebSocket, CLI, Web UI | ✅ Complete |
+| Visualization exports | ✅ Complete |
+
+See [packages/modal_logic/README.md](packages/modal_logic/README.md) for detailed documentation.
 
 ## Getting Started
 
 ### Prerequisites
 
-- [Gleam](https://gleam.run/) >= 0.34.0
-- [Erlang/OTP](https://www.erlang.org/) >= 26.0
+- [Gleam](https://gleam.run/) >= 1.13.0
+- [Erlang/OTP](https://www.erlang.org/) >= 27.0
 - Z3 (for z3_gleam package)
-- PostgreSQL (for analyst persistence)
-- Redis (for analyst caching)
-
-See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed installation instructions.
 
 ### Quick Start
 
@@ -74,78 +89,97 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed installation instruc
 git clone https://github.com/justin4957/foil.git
 cd foil
 
-# Install Erlang if needed
-brew install erlang
-
-# Install Gleam if needed
-brew install gleam
-
-# Build and run from individual packages
-cd packages/anthropic_gleam
+# Build all packages
+cd packages/modal_logic
 gleam build
 
-cd ../z3_gleam
-gleam build
+# Run tests
+gleam test
 
-cd ../../apps/analyst
-gleam run
+# Run specific test modules
+gleam run -m translation_test
+gleam run -m validation_test
+gleam run -m persistence_test
+gleam run -m interface_test
 ```
 
-### Running Tests
+### Example Usage
 
-```bash
-# Test individual packages
-cd packages/anthropic_gleam && gleam test
-cd packages/z3_gleam && gleam test
-cd packages/modal_logic && gleam test
-cd apps/analyst && gleam test
+```gleam
+import modal_logic/proposition.{Atom, Implies, Necessary, K}
+import modal_logic/argument.{Formalization}
+import modal_logic/validator
+
+pub fn main() {
+  // □(p → q), □p ⊢ □q (Modus Ponens under necessity)
+  let formalization = Formalization(
+    id: "modus-ponens-1",
+    argument_id: "arg-1",
+    logic_system: K,
+    premises: [
+      Necessary(Implies(Atom("p"), Atom("q"))),
+      Necessary(Atom("p")),
+    ],
+    conclusion: Necessary(Atom("q")),
+    assumptions: [],
+    validation: None,
+    created_at: None,
+    updated_at: None,
+  )
+
+  let config = validator.default_config()
+  let result = validator.validate(formalization, config)
+  // Result: Valid
+}
 ```
 
-## Development Tracks
+## Modal Logic Systems
 
-### Track A: Anthropic Gleam Client
-- **Phase A1** (2w): Core types, basic completion
-- **Phase A2** (2w): Streaming support
-- **Phase A3** (2w): Tool use
-- **Phase A4** (2w): Production polish, publish to Hex
+![Brain Visualization](https://media.giphy.com/media/l41lJ8ywG1ncm9FXW/giphy.gif)
 
-### Track B: Z3 Gleam Bindings
-- **Phase B1** (2w): Design, NIF vs Port decision, prototypes
-- **Phase B2** (3w): Core solver implementation
-- **Phase B3** (2w): Modal logic encoding, countermodels
-- **Phase B4** (2w): Performance, publish to Hex
-
-### Track C: Main Application
-- **Phase C1** (3w): Domain model, persistence (Postgres + Redis)
-- **Phase C2** (3w): LLM translation pipeline
-- **Phase C3** (3w): Validation orchestration, execution loop
-- **Phase C4** (3w): HTTP API, WebSocket, CLI, Web UI
+| System | Axioms | Frame Properties | Use Cases |
+|--------|--------|------------------|-----------|
+| **K** | K: □(p→q) → (□p→□q) | None | Basic modal reasoning |
+| **T** | K + T: □p → p | Reflexive | Alethic necessity |
+| **K4** | K + 4: □p → □□p | Transitive | - |
+| **S4** | K + T + 4 | Reflexive + Transitive | Knowledge, provability |
+| **S5** | K + T + 5: ◇p → □◇p | Equivalence relation | Metaphysical necessity |
+| **KD** | K + D: □p → ◇p | Serial | Deontic logic |
+| **KD45** | K + D + 4 + 5 | Serial + Trans + Euclidean | Deontic S5 |
 
 ## Documentation
 
+- [Modal Logic Package](packages/modal_logic/README.md) - Full API documentation
+- [QA Testing Guide](packages/modal_logic/docs/TESTING.md) - Testing procedures
 - [Development Guide](docs/DEVELOPMENT.md) - Setup and workflow
-- [Architecture Overview](docs/architecture/README.md)
-- [Testing Strategy](docs/TESTING.md)
-- [Roadmap](modal-logic-engin-roadmap.md)
-- [Quick Reference](modal-logic-engine-quickref.md)
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT License - See LICENSE file for details.
 
 ## Contributing
 
-This project follows standard Gleam conventions. See docs/contributing/ for guidelines.
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Run tests (`gleam test`)
+5. Format code (`gleam format src test`)
+6. Commit your changes
+7. Push to the branch
+8. Open a Pull Request
 
 ## Status
 
-🚧 **Early Development** - Initial project structure established. All tracks are in Phase 1.
+![Checkmark](https://media.giphy.com/media/3o7btNhMBytxAM6YBa/giphy.gif)
 
-### Current Focus
-- Establishing core type systems in all three packages
-- Setting up testing infrastructure
-- Preparing for parallel development across tracks
+**Development Complete** - All three tracks (A, B, C) have been implemented:
 
-## Contact
+- ✅ Track A: Anthropic Gleam Client (Phases A1-A4)
+- ✅ Track B: Z3 Gleam Bindings (Phases B1-B4)
+- ✅ Track C: Modal Logic Analysis (Phases C1-C4)
 
-For questions or feedback, please open an issue on GitHub.
+---
+
+![Thank You](https://media.giphy.com/media/q2fVZhnpLc0G8wwkP4/giphy.gif)
+
+Built with [Gleam](https://gleam.run/) | SMT solving by [Z3](https://github.com/Z3Prover/z3)
