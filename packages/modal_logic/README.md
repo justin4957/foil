@@ -5,17 +5,13 @@
 [![Build Status](https://github.com/justin4957/foil/actions/workflows/ci.yml/badge.svg)](https://github.com/justin4957/foil/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-<p align="center">
-  <img src="https://media.giphy.com/media/KVVgWtScb37USleUB3/giphy.gif" alt="AI Thinking" width="300"/>
-</p>
+![AI Thinking](https://media.giphy.com/media/KVVgWtScb37USleUB3/giphy.gif)
 
 > A comprehensive Gleam library for modal logic analysis, formalization, and validation. Transform natural language arguments into formal modal logic, validate them using Z3/SMT solvers, and get actionable repair suggestions.
 
 ## Features
 
-<p align="center">
-  <img src="https://media.giphy.com/media/Iup13qWlzAqsBItALB/giphy.gif" alt="Brain Think" width="200"/>
-</p>
+![Brain Think](https://media.giphy.com/media/Iup13qWlzAqsBItALB/giphy.gif)
 
 ### Core Capabilities
 
@@ -139,9 +135,7 @@ curl http://localhost:8080/api/systems
 
 ## Modal Logic Systems
 
-<p align="center">
-  <img src="https://media.giphy.com/media/l41lJ8ywG1ncm9FXW/giphy.gif" alt="Brain Visualization" width="250"/>
-</p>
+![Brain Visualization](https://media.giphy.com/media/l41lJ8ywG1ncm9FXW/giphy.gif)
 
 | System | Axioms | Frame Properties | Use Cases |
 |--------|--------|------------------|-----------|
@@ -241,9 +235,7 @@ digraph KripkeModel {
 
 ## Validation Results
 
-<p align="center">
-  <img src="https://media.giphy.com/media/3o7btNhMBytxAM6YBa/giphy.gif" alt="Checkmark" width="150"/>
-</p>
+![Checkmark](https://media.giphy.com/media/3o7btNhMBytxAM6YBa/giphy.gif)
 
 ### Valid Argument Example
 
@@ -396,9 +388,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-<p align="center">
-  <img src="https://media.giphy.com/media/q2fVZhnpLc0G8wwkP4/giphy.gif" alt="Thank You Brain" width="200"/>
-</p>
+![Thank You Brain](https://media.giphy.com/media/q2fVZhnpLc0G8wwkP4/giphy.gif)
 
 - Built with [Gleam](https://gleam.run/)
 - SMT solving powered by [Z3](https://github.com/Z3Prover/z3)
@@ -406,6 +396,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-<p align="center">
-  Made with ❤️ for modal logic enthusiasts
-</p>
+Made with ❤️ for modal logic enthusiasts
