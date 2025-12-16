@@ -133,7 +133,8 @@ pub fn extract_epistemic_arguments_test() {
       args |> should.not_equal([])
 
       // Should have factivity argument
-      let factivity = list.find(args, fn(a) { a.id == "sep_epistemic_factivity" })
+      let factivity =
+        list.find(args, fn(a) { a.id == "sep_epistemic_factivity" })
       factivity |> should.be_ok
     }
     None -> panic as "Expected to find epistemic entry"
@@ -389,7 +390,9 @@ pub fn fetch_entry_with_retry_success_test() {
       updated_client.entries_fetched |> should.equal(1)
     }
     sep_adapter.SEPError(err) ->
-      panic as { "Expected success, got error: " <> sep_adapter.format_error(err) }
+      panic as {
+        "Expected success, got error: " <> sep_adapter.format_error(err)
+      }
   }
 }
 
@@ -499,7 +502,12 @@ pub fn client_statistics_test() {
   let #(client1, _) =
     sep_adapter.fetch_entry_with_retry(client, "logic-modal", current_time, 3)
   let #(client2, _) =
-    sep_adapter.fetch_entry_with_retry(client1, "logic-epistemic", current_time, 3)
+    sep_adapter.fetch_entry_with_retry(
+      client1,
+      "logic-epistemic",
+      current_time,
+      3,
+    )
 
   let stats = sep_adapter.client_statistics(client2)
 
@@ -541,7 +549,8 @@ pub fn api_client_cache_put_get_test() {
     )
 
   // Put in cache
-  let cache1 = api_client.cache_put(cache, "test-key", response, 3600, current_time)
+  let cache1 =
+    api_client.cache_put(cache, "test-key", response, 3600, current_time)
 
   // Get from cache
   let #(cache2, result) = api_client.cache_get(cache1, "test-key", current_time)
@@ -569,7 +578,8 @@ pub fn api_client_cache_expiry_test() {
     )
 
   // Put in cache with 100s TTL
-  let cache1 = api_client.cache_put(cache, "test-key", response, 100, current_time)
+  let cache1 =
+    api_client.cache_put(cache, "test-key", response, 100, current_time)
 
   // Get after expiry
   let #(cache2, result) =
@@ -599,8 +609,10 @@ pub fn api_client_rate_limiter_limit_test() {
 
   // Use up the limit
   let #(limiter1, allowed1) = api_client.rate_limit_check(limiter, current_time)
-  let #(limiter2, allowed2) = api_client.rate_limit_check(limiter1, current_time)
-  let #(limiter3, allowed3) = api_client.rate_limit_check(limiter2, current_time)
+  let #(limiter2, allowed2) =
+    api_client.rate_limit_check(limiter1, current_time)
+  let #(limiter3, allowed3) =
+    api_client.rate_limit_check(limiter2, current_time)
 
   allowed1 |> should.be_true
   allowed2 |> should.be_true
@@ -716,10 +728,7 @@ pub fn api_client_format_error_test() {
   let errors = [
     #(api_client.NetworkError("conn refused"), "Network error: conn refused"),
     #(api_client.TimeoutError(5000), "Request timed out after 5000ms"),
-    #(
-      api_client.RateLimitError(60),
-      "Rate limited, retry after 60 seconds",
-    ),
+    #(api_client.RateLimitError(60), "Rate limited, retry after 60 seconds"),
     #(api_client.HttpError(404, "Not Found"), "HTTP 404: Not Found"),
     #(api_client.InvalidUrl("bad://url"), "Invalid URL: bad://url"),
   ]

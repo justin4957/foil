@@ -581,7 +581,11 @@ fn fetch_entry_retry_helper(
           let request = api_client.get("/entries/" <> slug <> "/")
 
           let #(updated_api_client, result) =
-            api_client.simulate_request(client.api_client, request, current_time)
+            api_client.simulate_request(
+              client.api_client,
+              request,
+              current_time,
+            )
 
           let client = SEPClient(..client, api_client: updated_api_client)
 
@@ -629,13 +633,10 @@ fn fetch_entry_retry_helper(
                         attempt + 1,
                         "Server error: " <> int.to_string(status),
                       )
-                    False ->
-                      #(
-                        client,
-                        SEPError(NetworkError(
-                          "HTTP " <> int.to_string(status),
-                        )),
-                      )
+                    False -> #(
+                      client,
+                      SEPError(NetworkError("HTTP " <> int.to_string(status))),
+                    )
                   }
                 }
               }
@@ -651,7 +652,10 @@ fn fetch_entry_retry_helper(
                     attempt + 1,
                     api_client.format_error(err),
                   )
-                False -> #(client, SEPError(NetworkError(api_client.format_error(err))))
+                False -> #(
+                  client,
+                  SEPError(NetworkError(api_client.format_error(err))),
+                )
               }
             }
           }
@@ -703,7 +707,8 @@ pub fn fetch_and_extract(
   let final_client =
     SEPClient(
       ..updated_client,
-      extraction_attempts: updated_client.extraction_attempts + list.length(slugs),
+      extraction_attempts: updated_client.extraction_attempts
+        + list.length(slugs),
     )
 
   #(final_client, arguments)

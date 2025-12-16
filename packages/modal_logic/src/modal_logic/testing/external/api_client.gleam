@@ -169,7 +169,8 @@ pub fn cache_put(
   ttl_sec: Int,
   current_time: Int,
 ) -> CacheState {
-  let entry = CacheEntry(response: response, cached_at: current_time, ttl_sec: ttl_sec)
+  let entry =
+    CacheEntry(response: response, cached_at: current_time, ttl_sec: ttl_sec)
   let new_entries = dict.insert(cache.entries, key, entry)
   CacheState(..cache, entries: new_entries)
 }
@@ -360,7 +361,8 @@ pub fn is_retryable_error(error: ClientError) -> Bool {
     NetworkError(_) -> True
     TimeoutError(_) -> True
     RateLimitError(_) -> True
-    HttpError(status, _) -> list.contains([408, 429, 500, 502, 503, 504], status)
+    HttpError(status, _) ->
+      list.contains([408, 429, 500, 502, 503, 504], status)
     CacheError(_) -> False
     InvalidUrl(_) -> False
     RetriesExhausted(_, _) -> False
@@ -426,12 +428,20 @@ pub fn get(path: String) -> HttpRequest {
 }
 
 /// Add query parameter to request
-pub fn with_query(request: HttpRequest, key: String, value: String) -> HttpRequest {
+pub fn with_query(
+  request: HttpRequest,
+  key: String,
+  value: String,
+) -> HttpRequest {
   HttpRequest(..request, query_params: [#(key, value), ..request.query_params])
 }
 
 /// Add header to request
-pub fn with_header(request: HttpRequest, key: String, value: String) -> HttpRequest {
+pub fn with_header(
+  request: HttpRequest,
+  key: String,
+  value: String,
+) -> HttpRequest {
   HttpRequest(..request, headers: [#(key, value), ..request.headers])
 }
 
@@ -463,8 +473,7 @@ pub fn simulate_request(
   let url = build_url(client.config.base_url, request)
 
   // Check cache first
-  let #(cache_after_get, cached) =
-    cache_get(client.cache, url, current_time)
+  let #(cache_after_get, cached) = cache_get(client.cache, url, current_time)
   let client = ClientState(..client, cache: cache_after_get)
 
   case cached {
@@ -477,7 +486,8 @@ pub fn simulate_request(
 
       case allowed {
         False -> {
-          let wait_time = rate_limit_wait_time(client.rate_limiter, current_time)
+          let wait_time =
+            rate_limit_wait_time(client.rate_limiter, current_time)
           let client =
             ClientState(..client, failed_requests: client.failed_requests + 1)
           #(client, ClientErr(RateLimitError(wait_time)))
@@ -587,8 +597,7 @@ pub fn format_error(error: ClientError) -> String {
     TimeoutError(ms) -> "Request timed out after " <> int.to_string(ms) <> "ms"
     RateLimitError(sec) ->
       "Rate limited, retry after " <> int.to_string(sec) <> " seconds"
-    HttpError(status, msg) ->
-      "HTTP " <> int.to_string(status) <> ": " <> msg
+    HttpError(status, msg) -> "HTTP " <> int.to_string(status) <> ": " <> msg
     CacheError(msg) -> "Cache error: " <> msg
     InvalidUrl(url) -> "Invalid URL: " <> url
     RetriesExhausted(attempts, last) ->
