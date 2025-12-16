@@ -21,7 +21,7 @@ import modal_logic/rules/rule_builder.{
 import modal_logic/rules/rule_store
 import modal_logic/testing/docs/doc_generator
 import modal_logic/testing/external/folio_adapter
-import modal_logic/testing/external/sep_adapter
+import modal_logic/testing/external/inpho_adapter
 import modal_logic/testing/validation/argument_corpus
 import modal_logic/testing/validation/philosophical_tester
 import modal_logic/testing/validation/soundness_checker
@@ -123,9 +123,9 @@ pub fn rule_store_versioning_workflow_test() {
 
 // ============ External Data Integration Tests ============
 
-/// Test SEP adapter produces valid fixtures
-pub fn sep_adapter_fixtures_test() {
-  let fixtures = sep_adapter.get_mock_fixtures()
+/// Test InPhO adapter produces valid fixtures
+pub fn inpho_adapter_fixtures_test() {
+  let fixtures = inpho_adapter.get_mock_fixtures()
 
   fixtures
   |> list.length

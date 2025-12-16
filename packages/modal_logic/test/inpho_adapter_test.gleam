@@ -1,6 +1,6 @@
-//// Tests for SEP Adapter
+//// Tests for InPhO Adapter
 ////
-//// Tests the Stanford Encyclopedia of Philosophy integration including
+//// Tests the Indiana Philosophy Ontology (InPhO) integration including
 //// the API client wrapper, caching, rate limiting, and argument extraction.
 
 import gleam/dict
@@ -9,8 +9,8 @@ import gleam/option.{None, Some}
 import gleeunit/should
 import modal_logic/proposition.{K, S5, T}
 import modal_logic/testing/external/api_client.{ClientConfig, HttpResponse}
-import modal_logic/testing/external/sep_adapter.{
-  SEPOk, default_client, default_config, mock_entries, new_client,
+import modal_logic/testing/external/inpho_adapter.{
+  InPhOOk, default_client, default_config, mock_ideas, new_client,
 }
 
 // ============ Configuration Tests ============
@@ -18,78 +18,85 @@ import modal_logic/testing/external/sep_adapter.{
 pub fn default_config_test() {
   let config = default_config()
 
-  config.api_url |> should.equal("https://plato.stanford.edu")
+  config.api_url |> should.equal("https://www.inphoproject.org")
   config.cache_duration |> should.equal(86_400)
-  config.max_entries |> should.equal(50)
-  config.rate_limit |> should.equal(10)
+  config.max_ideas |> should.equal(50)
+  config.rate_limit |> should.equal(30)
 }
 
 pub fn comprehensive_config_test() {
-  let config = sep_adapter.comprehensive_config()
+  let config = inpho_adapter.comprehensive_config()
 
   config.cache_duration |> should.equal(604_800)
-  config.max_entries |> should.equal(200)
-  config.rate_limit |> should.equal(5)
+  config.max_ideas |> should.equal(200)
+  config.rate_limit |> should.equal(20)
 }
 
-// ============ Entry List Tests ============
+// ============ Idea List Tests ============
 
-pub fn modal_logic_entries_test() {
-  let entries = sep_adapter.modal_logic_entries()
+pub fn modal_logic_idea_ids_test() {
+  let ids = inpho_adapter.modal_logic_idea_ids()
 
-  entries |> should.not_equal([])
-  list.contains(entries, "logic-modal") |> should.be_true
-  list.contains(entries, "logic-epistemic") |> should.be_true
+  ids |> should.not_equal([])
+  list.contains(ids, 1209) |> should.be_true
+  // Modal Logic
+  list.contains(ids, 1501) |> should.be_true
+  // Possible Worlds
 }
 
-pub fn epistemic_logic_entries_test() {
-  let entries = sep_adapter.epistemic_logic_entries()
+pub fn epistemic_idea_ids_test() {
+  let ids = inpho_adapter.epistemic_idea_ids()
 
-  entries |> should.not_equal([])
-  list.contains(entries, "logic-epistemic") |> should.be_true
-  list.contains(entries, "knowledge-analysis") |> should.be_true
+  ids |> should.not_equal([])
+  list.contains(ids, 646) |> should.be_true
+  // Epistemology
 }
 
-pub fn deontic_logic_entries_test() {
-  let entries = sep_adapter.deontic_logic_entries()
+pub fn deontic_idea_ids_test() {
+  let ids = inpho_adapter.deontic_idea_ids()
 
-  entries |> should.not_equal([])
-  list.contains(entries, "logic-deontic") |> should.be_true
+  ids |> should.not_equal([])
+  list.contains(ids, 602) |> should.be_true
+  // Ethics
 }
 
-pub fn all_relevant_entries_test() {
-  let all = sep_adapter.all_relevant_entries()
-  let modal = sep_adapter.modal_logic_entries()
-  let epistemic = sep_adapter.epistemic_logic_entries()
-  let deontic = sep_adapter.deontic_logic_entries()
+pub fn all_relevant_idea_ids_test() {
+  let all = inpho_adapter.all_relevant_idea_ids()
+  let modal = inpho_adapter.modal_logic_idea_ids()
+  let epistemic = inpho_adapter.epistemic_idea_ids()
+  let deontic = inpho_adapter.deontic_idea_ids()
 
-  // All should contain entries from each category
-  list.all(modal, fn(e) { list.contains(all, e) }) |> should.be_true
-  list.all(epistemic, fn(e) { list.contains(all, e) }) |> should.be_true
-  list.all(deontic, fn(e) { list.contains(all, e) }) |> should.be_true
+  // All should contain IDs from each category
+  list.all(modal, fn(id) { list.contains(all, id) }) |> should.be_true
+  list.all(epistemic, fn(id) { list.contains(all, id) }) |> should.be_true
+  list.all(deontic, fn(id) { list.contains(all, id) }) |> should.be_true
 }
 
 // ============ Mock Data Tests ============
 
-pub fn mock_entries_test() {
-  let entries = mock_entries()
+pub fn mock_ideas_test() {
+  let ideas = mock_ideas()
 
-  entries |> should.not_equal([])
+  ideas |> should.not_equal([])
 
-  // Should have known entries
-  let slugs = list.map(entries, fn(e) { e.slug })
-  list.contains(slugs, "logic-modal") |> should.be_true
-  list.contains(slugs, "logic-epistemic") |> should.be_true
-  list.contains(slugs, "logic-deontic") |> should.be_true
-  list.contains(slugs, "possible-worlds") |> should.be_true
+  // Should have known ideas
+  let ids = list.map(ideas, fn(i) { i.id })
+  list.contains(ids, 1209) |> should.be_true
+  // Modal Logic
+  list.contains(ids, 646) |> should.be_true
+  // Epistemology
+  list.contains(ids, 602) |> should.be_true
+  // Ethics
+  list.contains(ids, 1501) |> should.be_true
+  // Possible Worlds
 }
 
-pub fn mock_entry_structure_test() {
-  let entries = mock_entries()
+pub fn mock_idea_structure_test() {
+  let ideas = mock_ideas()
 
-  list.all(entries, fn(e) {
-    // All entries should have required fields
-    e.slug != "" && e.title != "" && e.content != "" && e.url != ""
+  list.all(ideas, fn(i) {
+    // All ideas should have required fields
+    i.id > 0 && i.label != "" && i.url != "" && i.idea_type == "idea"
   })
   |> should.be_true
 }
@@ -97,82 +104,82 @@ pub fn mock_entry_structure_test() {
 // ============ Argument Extraction Tests ============
 
 pub fn extract_modal_arguments_test() {
-  let entries = mock_entries()
-  let modal_entry =
-    list.find(entries, fn(e) { e.slug == "logic-modal" })
+  let ideas = mock_ideas()
+  let modal_idea =
+    list.find(ideas, fn(i) { i.id == 1209 })
     |> option.from_result
 
-  case modal_entry {
-    Some(entry) -> {
-      let args = sep_adapter.extract_arguments(entry)
+  case modal_idea {
+    Some(idea) -> {
+      let args = inpho_adapter.extract_arguments(idea)
 
       args |> should.not_equal([])
 
       // Should have K axiom argument
-      let k_arg = list.find(args, fn(a) { a.id == "sep_modal_k" })
+      let k_arg = list.find(args, fn(a) { a.id == "inpho_modal_k" })
       k_arg |> should.be_ok
 
       // Should have T axiom argument
-      let t_arg = list.find(args, fn(a) { a.id == "sep_modal_t" })
+      let t_arg = list.find(args, fn(a) { a.id == "inpho_modal_t" })
       t_arg |> should.be_ok
     }
-    None -> panic as "Expected to find modal entry"
+    None -> panic as "Expected to find modal idea"
   }
 }
 
 pub fn extract_epistemic_arguments_test() {
-  let entries = mock_entries()
-  let entry =
-    list.find(entries, fn(e) { e.slug == "logic-epistemic" })
+  let ideas = mock_ideas()
+  let idea =
+    list.find(ideas, fn(i) { i.id == 646 })
     |> option.from_result
 
-  case entry {
-    Some(e) -> {
-      let args = sep_adapter.extract_arguments(e)
+  case idea {
+    Some(i) -> {
+      let args = inpho_adapter.extract_arguments(i)
 
       args |> should.not_equal([])
 
       // Should have factivity argument
       let factivity =
-        list.find(args, fn(a) { a.id == "sep_epistemic_factivity" })
+        list.find(args, fn(a) { a.id == "inpho_epistemic_factivity" })
       factivity |> should.be_ok
     }
-    None -> panic as "Expected to find epistemic entry"
+    None -> panic as "Expected to find epistemic idea"
   }
 }
 
 pub fn extract_deontic_arguments_test() {
-  let entries = mock_entries()
-  let entry =
-    list.find(entries, fn(e) { e.slug == "logic-deontic" })
+  let ideas = mock_ideas()
+  let idea =
+    list.find(ideas, fn(i) { i.id == 602 })
     |> option.from_result
 
-  case entry {
-    Some(e) -> {
-      let args = sep_adapter.extract_arguments(e)
+  case idea {
+    Some(i) -> {
+      let args = inpho_adapter.extract_arguments(i)
 
       args |> should.not_equal([])
 
       // Should have D axiom argument
-      let d_arg = list.find(args, fn(a) { a.id == "sep_deontic_d" })
+      let d_arg = list.find(args, fn(a) { a.id == "inpho_deontic_d" })
       d_arg |> should.be_ok
     }
-    None -> panic as "Expected to find deontic entry"
+    None -> panic as "Expected to find deontic idea"
   }
 }
 
 // ============ Argument Properties Tests ============
 
 pub fn argument_structure_test() {
-  let entries = mock_entries()
+  let ideas = mock_ideas()
   let args =
-    entries
-    |> list.flat_map(sep_adapter.extract_arguments)
+    ideas
+    |> list.flat_map(inpho_adapter.extract_arguments)
 
   // All arguments should have valid structure
   list.all(args, fn(a) {
     a.id != ""
-    && a.source_entry != ""
+    && a.source_idea > 0
     && a.natural_language != ""
     && list.length(a.premises) > 0
     && a.confidence >=. 0.0
@@ -182,10 +189,10 @@ pub fn argument_structure_test() {
 }
 
 pub fn argument_logic_systems_test() {
-  let entries = mock_entries()
+  let ideas = mock_ideas()
   let args =
-    entries
-    |> list.flat_map(sep_adapter.extract_arguments)
+    ideas
+    |> list.flat_map(inpho_adapter.extract_arguments)
 
   // Should have arguments in different logic systems
   let systems = list.map(args, fn(a) { a.logic_system }) |> list.unique
@@ -198,12 +205,12 @@ pub fn argument_logic_systems_test() {
 // ============ Fixture Conversion Tests ============
 
 pub fn argument_to_fixture_test() {
-  let entries = mock_entries()
+  let ideas = mock_ideas()
   let args =
-    entries
-    |> list.flat_map(sep_adapter.extract_arguments)
+    ideas
+    |> list.flat_map(inpho_adapter.extract_arguments)
 
-  let fixtures = list.map(args, sep_adapter.argument_to_fixture)
+  let fixtures = list.map(args, inpho_adapter.argument_to_fixture)
 
   // Should have same count
   list.length(fixtures) |> should.equal(list.length(args))
@@ -215,43 +222,43 @@ pub fn argument_to_fixture_test() {
   |> should.be_true
 }
 
-pub fn entry_to_fixtures_test() {
-  let entries = mock_entries()
-  let modal_entry =
-    list.find(entries, fn(e) { e.slug == "logic-modal" })
+pub fn idea_to_fixtures_test() {
+  let ideas = mock_ideas()
+  let modal_idea =
+    list.find(ideas, fn(i) { i.id == 1209 })
     |> option.from_result
 
-  case modal_entry {
-    Some(entry) -> {
-      let fixtures = sep_adapter.entry_to_fixtures(entry)
+  case modal_idea {
+    Some(idea) -> {
+      let fixtures = inpho_adapter.idea_to_fixtures(idea)
       fixtures |> should.not_equal([])
 
-      // All fixtures should reference SEP source
+      // All fixtures should reference InPhO source
       list.all(fixtures, fn(f) {
         case f.source {
-          Some(s) -> s == "SEP:logic-modal"
+          Some(s) -> s == "InPhO:1209"
           None -> False
         }
       })
       |> should.be_true
     }
-    None -> panic as "Expected to find modal entry"
+    None -> panic as "Expected to find modal idea"
   }
 }
 
 pub fn get_mock_fixtures_test() {
-  let fixtures = sep_adapter.get_mock_fixtures()
+  let fixtures = inpho_adapter.get_mock_fixtures()
 
   fixtures |> should.not_equal([])
 
-  // All fixtures should have SEP source
+  // All fixtures should have InPhO source
   list.all(fixtures, fn(f) {
     case f.source {
       Some(s) ->
-        s == "SEP:logic-modal"
-        || s == "SEP:logic-epistemic"
-        || s == "SEP:logic-deontic"
-        || s == "SEP:possible-worlds"
+        s == "InPhO:1209"
+        || s == "InPhO:646"
+        || s == "InPhO:602"
+        || s == "InPhO:1501"
       None -> False
     }
   })
@@ -260,32 +267,32 @@ pub fn get_mock_fixtures_test() {
 
 // ============ Utility Function Tests ============
 
-pub fn count_by_entry_test() {
-  let entries = mock_entries()
+pub fn count_by_idea_test() {
+  let ideas = mock_ideas()
   let args =
-    entries
-    |> list.flat_map(sep_adapter.extract_arguments)
+    ideas
+    |> list.flat_map(inpho_adapter.extract_arguments)
 
-  let counts = sep_adapter.count_by_entry(args)
+  let counts = inpho_adapter.count_by_idea(args)
 
-  // Should have counts for each entry with arguments
+  // Should have counts for each idea with arguments
   dict.size(counts) |> should.not_equal(0)
 
-  // Modal logic should have multiple arguments
-  case dict.get(counts, "logic-modal") {
+  // Modal logic (1209) should have multiple arguments
+  case dict.get(counts, 1209) {
     Ok(count) -> count |> should.not_equal(0)
-    Error(_) -> panic as "Expected count for logic-modal"
+    Error(_) -> panic as "Expected count for modal logic (1209)"
   }
 }
 
 pub fn filter_by_confidence_test() {
-  let entries = mock_entries()
+  let ideas = mock_ideas()
   let args =
-    entries
-    |> list.flat_map(sep_adapter.extract_arguments)
+    ideas
+    |> list.flat_map(inpho_adapter.extract_arguments)
 
-  let high_confidence = sep_adapter.filter_by_confidence(args, 0.9)
-  let low_confidence = sep_adapter.filter_by_confidence(args, 0.5)
+  let high_confidence = inpho_adapter.filter_by_confidence(args, 0.9)
+  let low_confidence = inpho_adapter.filter_by_confidence(args, 0.5)
 
   // High confidence should be subset of low confidence threshold
   { list.length(high_confidence) <= list.length(low_confidence) }
@@ -296,13 +303,13 @@ pub fn filter_by_confidence_test() {
 }
 
 pub fn filter_by_system_test() {
-  let entries = mock_entries()
+  let ideas = mock_ideas()
   let args =
-    entries
-    |> list.flat_map(sep_adapter.extract_arguments)
+    ideas
+    |> list.flat_map(inpho_adapter.extract_arguments)
 
-  let k_args = sep_adapter.filter_by_system(args, K)
-  let t_args = sep_adapter.filter_by_system(args, T)
+  let k_args = inpho_adapter.filter_by_system(args, K)
+  let t_args = inpho_adapter.filter_by_system(args, T)
 
   // Should have some K arguments
   k_args |> should.not_equal([])
@@ -315,139 +322,133 @@ pub fn filter_by_system_test() {
 }
 
 pub fn extraction_statistics_test() {
-  let entries = mock_entries()
+  let ideas = mock_ideas()
   let args =
-    entries
-    |> list.flat_map(sep_adapter.extract_arguments)
+    ideas
+    |> list.flat_map(inpho_adapter.extract_arguments)
 
-  let stats = sep_adapter.extraction_statistics(args)
+  let stats = inpho_adapter.extraction_statistics(args)
 
   stats.total_arguments |> should.equal(list.length(args))
   { stats.average_confidence >=. 0.0 } |> should.be_true
   { stats.average_confidence <=. 1.0 } |> should.be_true
-  stats.unique_entries |> should.not_equal(0)
+  stats.unique_ideas |> should.not_equal(0)
 }
 
 // ============ Error Formatting Tests ============
 
 pub fn format_network_error_test() {
-  let error = sep_adapter.NetworkError("Connection refused")
-  let formatted = sep_adapter.format_error(error)
+  let error = inpho_adapter.NetworkError("Connection refused")
+  let formatted = inpho_adapter.format_error(error)
 
   formatted |> should.equal("Network error: Connection refused")
 }
 
 pub fn format_parse_error_test() {
-  let error = sep_adapter.ParseError("Invalid JSON")
-  let formatted = sep_adapter.format_error(error)
+  let error = inpho_adapter.ParseError("Invalid JSON")
+  let formatted = inpho_adapter.format_error(error)
 
   formatted |> should.equal("Parse error: Invalid JSON")
 }
 
-pub fn format_entry_not_found_test() {
-  let error = sep_adapter.EntryNotFound("unknown-entry")
-  let formatted = sep_adapter.format_error(error)
+pub fn format_idea_not_found_test() {
+  let error = inpho_adapter.IdeaNotFound(9999)
+  let formatted = inpho_adapter.format_error(error)
 
-  formatted |> should.equal("Entry not found: unknown-entry")
+  formatted |> should.equal("Idea not found: 9999")
 }
 
 pub fn format_rate_limited_test() {
-  let error = sep_adapter.RateLimited(60)
-  let formatted = sep_adapter.format_error(error)
+  let error = inpho_adapter.RateLimited(60)
+  let formatted = inpho_adapter.format_error(error)
 
   formatted |> should.equal("Rate limited, retry after 60 seconds")
 }
 
-// ============ SEP Client Tests ============
+// ============ InPhO Client Tests ============
 
 pub fn new_client_test() {
   let config = default_config()
   let client = new_client(config)
 
-  client.entries_fetched |> should.equal(0)
+  client.ideas_fetched |> should.equal(0)
   client.extraction_attempts |> should.equal(0)
-  dict.size(client.entries_cache) |> should.equal(0)
+  dict.size(client.ideas_cache) |> should.equal(0)
 }
 
 pub fn default_client_test() {
   let client = default_client()
 
-  client.config.api_url |> should.equal("https://plato.stanford.edu")
-  client.entries_fetched |> should.equal(0)
+  client.config.api_url |> should.equal("https://www.inphoproject.org")
+  client.ideas_fetched |> should.equal(0)
 }
 
-pub fn fetch_entry_with_retry_success_test() {
+pub fn fetch_idea_with_retry_success_test() {
   let client = default_client()
   let current_time = 1_000_000
 
   let #(updated_client, result) =
-    sep_adapter.fetch_entry_with_retry(client, "logic-modal", current_time, 3)
+    inpho_adapter.fetch_idea_with_retry(client, 1209, current_time, 3)
 
   case result {
-    SEPOk(entry) -> {
-      entry.slug |> should.equal("logic-modal")
-      entry.title |> should.equal("Modal Logic")
-      updated_client.entries_fetched |> should.equal(1)
+    InPhOOk(idea) -> {
+      idea.id |> should.equal(1209)
+      idea.label |> should.equal("Modal Logic")
+      updated_client.ideas_fetched |> should.equal(1)
     }
-    sep_adapter.SEPError(err) ->
+    inpho_adapter.InPhOError(err) ->
       panic as {
-        "Expected success, got error: " <> sep_adapter.format_error(err)
+        "Expected success, got error: " <> inpho_adapter.format_error(err)
       }
   }
 }
 
-pub fn fetch_entry_with_retry_not_found_test() {
+pub fn fetch_idea_with_retry_not_found_test() {
   let client = default_client()
   let current_time = 1_000_000
 
   let #(_updated_client, result) =
-    sep_adapter.fetch_entry_with_retry(
-      client,
-      "nonexistent-entry",
-      current_time,
-      3,
-    )
+    inpho_adapter.fetch_idea_with_retry(client, 99_999, current_time, 3)
 
   case result {
-    SEPOk(_) -> panic as "Expected error, got success"
-    sep_adapter.SEPError(err) -> {
+    InPhOOk(_) -> panic as "Expected error, got success"
+    inpho_adapter.InPhOError(err) -> {
       case err {
-        sep_adapter.EntryNotFound(slug) ->
-          slug |> should.equal("nonexistent-entry")
-        _ -> panic as "Expected EntryNotFound error"
+        inpho_adapter.IdeaNotFound(id) -> id |> should.equal(99_999)
+        _ -> panic as "Expected IdeaNotFound error"
       }
     }
   }
 }
 
-pub fn fetch_entry_caching_test() {
+pub fn fetch_idea_caching_test() {
   let client = default_client()
   let current_time = 1_000_000
 
   // First fetch
   let #(client1, _result1) =
-    sep_adapter.fetch_entry_with_retry(client, "logic-modal", current_time, 3)
+    inpho_adapter.fetch_idea_with_retry(client, 1209, current_time, 3)
 
   // Second fetch (should be cached)
   let #(client2, result2) =
-    sep_adapter.fetch_entry_with_retry(client1, "logic-modal", current_time, 3)
+    inpho_adapter.fetch_idea_with_retry(client1, 1209, current_time, 3)
 
   case result2 {
-    SEPOk(entry) -> entry.slug |> should.equal("logic-modal")
-    sep_adapter.SEPError(_) -> panic as "Expected cached result"
+    InPhOOk(idea) -> idea.id |> should.equal(1209)
+    inpho_adapter.InPhOError(_) -> panic as "Expected cached result"
   }
 
-  // Entry should be in cache
-  dict.has_key(client2.entries_cache, "logic-modal") |> should.be_true
+  // Idea should be in cache
+  dict.has_key(client2.ideas_cache, 1209) |> should.be_true
 }
 
-pub fn fetch_entries_test() {
+pub fn fetch_ideas_test() {
   let client = default_client()
   let current_time = 1_000_000
 
-  let slugs = ["logic-modal", "logic-epistemic"]
+  let idea_ids = [1209, 646]
   let #(updated_client, results) =
-    sep_adapter.fetch_entries(client, slugs, current_time)
+    inpho_adapter.fetch_ideas(client, idea_ids, current_time)
 
   // Should have results for both
   list.length(results) |> should.equal(2)
@@ -456,22 +457,22 @@ pub fn fetch_entries_test() {
   let successes =
     list.count(results, fn(pair) {
       case pair.1 {
-        SEPOk(_) -> True
-        sep_adapter.SEPError(_) -> False
+        InPhOOk(_) -> True
+        inpho_adapter.InPhOError(_) -> False
       }
     })
 
   successes |> should.equal(2)
-  updated_client.entries_fetched |> should.equal(2)
+  updated_client.ideas_fetched |> should.equal(2)
 }
 
 pub fn fetch_and_extract_test() {
   let client = default_client()
   let current_time = 1_000_000
 
-  let slugs = ["logic-modal", "logic-epistemic"]
+  let idea_ids = [1209, 646]
   let #(updated_client, args) =
-    sep_adapter.fetch_and_extract(client, slugs, current_time)
+    inpho_adapter.fetch_and_extract(client, idea_ids, current_time)
 
   // Should have extracted arguments
   args |> should.not_equal([])
@@ -485,10 +486,9 @@ pub fn get_modal_arguments_test() {
   let current_time = 1_000_000
 
   let #(_updated_client, args) =
-    sep_adapter.get_modal_arguments(client, current_time)
+    inpho_adapter.get_modal_arguments(client, current_time)
 
-  // Should have some arguments (from mock entries that match modal_logic_entries)
-  // Note: Only mock entries that exist will return arguments
+  // Should have some arguments (from mock ideas that match modal_logic_idea_ids)
   { list.length(args) >= 0 } |> should.be_true
 }
 
@@ -498,28 +498,23 @@ pub fn client_statistics_test() {
   let client = default_client()
   let current_time = 1_000_000
 
-  // Fetch some entries to generate stats
+  // Fetch some ideas to generate stats
   let #(client1, _) =
-    sep_adapter.fetch_entry_with_retry(client, "logic-modal", current_time, 3)
+    inpho_adapter.fetch_idea_with_retry(client, 1209, current_time, 3)
   let #(client2, _) =
-    sep_adapter.fetch_entry_with_retry(
-      client1,
-      "logic-epistemic",
-      current_time,
-      3,
-    )
+    inpho_adapter.fetch_idea_with_retry(client1, 646, current_time, 3)
 
-  let stats = sep_adapter.client_statistics(client2)
+  let stats = inpho_adapter.client_statistics(client2)
 
-  stats.entries_fetched |> should.equal(2)
-  stats.entries_cached |> should.equal(2)
+  stats.ideas_fetched |> should.equal(2)
+  stats.ideas_cached |> should.equal(2)
   stats.api_requests |> should.not_equal(0)
 }
 
 pub fn format_client_statistics_test() {
   let client = default_client()
-  let stats = sep_adapter.client_statistics(client)
-  let formatted = sep_adapter.format_client_statistics(stats)
+  let stats = inpho_adapter.client_statistics(client)
+  let formatted = inpho_adapter.format_client_statistics(stats)
 
   formatted |> should.not_equal("")
   // Should contain key sections
@@ -652,11 +647,11 @@ pub fn api_client_retryable_error_test() {
 
 pub fn api_client_build_url_test() {
   let request =
-    api_client.get("/entries/test/")
+    api_client.get("/idea/1209.json")
     |> api_client.with_query("key1", "value1")
     |> api_client.with_query("key2", "value2")
 
-  let url = api_client.build_url("https://example.com", request)
+  let url = api_client.build_url("https://www.inphoproject.org", request)
 
   // Should have base URL + path + query params
   { url != "" } |> should.be_true
@@ -665,7 +660,7 @@ pub fn api_client_build_url_test() {
 pub fn api_client_simulate_request_test() {
   let config =
     ClientConfig(
-      base_url: "https://test.com",
+      base_url: "https://www.inphoproject.org",
       timeout_ms: 5000,
       max_retries: 3,
       retry_delay_ms: 1000,
@@ -674,7 +669,7 @@ pub fn api_client_simulate_request_test() {
       user_agent: "test/1.0",
     )
   let client = api_client.new_client(config)
-  let request = api_client.get("/test")
+  let request = api_client.get("/idea/1209.json")
   let current_time = 1000
 
   let #(updated_client, result) =
@@ -693,7 +688,7 @@ pub fn api_client_simulate_request_test() {
 pub fn api_client_cached_request_test() {
   let config =
     ClientConfig(
-      base_url: "https://test.com",
+      base_url: "https://www.inphoproject.org",
       timeout_ms: 5000,
       max_retries: 3,
       retry_delay_ms: 1000,
@@ -702,7 +697,7 @@ pub fn api_client_cached_request_test() {
       user_agent: "test/1.0",
     )
   let client = api_client.new_client(config)
-  let request = api_client.get("/test")
+  let request = api_client.get("/idea/1209.json")
   let current_time = 1000
 
   // First request
