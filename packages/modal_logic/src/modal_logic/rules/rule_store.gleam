@@ -744,6 +744,126 @@ pub fn export_summary(export: StoreExport) -> String {
   ])
 }
 
+/// Import a store from a StoreExport
+/// Note: This creates metadata from the export but rules need to be
+/// reconstructed from the rule builder since patterns aren't serialized
+pub fn import_export(export: StoreExport) -> Result(RuleStore, StoreError) {
+  // Create a new store with the exported name
+  let store = new_named(export.name)
+
+  // Import rule sets
+  let store =
+    list.fold(export.rule_sets, store, fn(acc, rule_set) {
+      case
+        create_rule_set(acc, rule_set.id, rule_set.name, rule_set.description)
+      {
+        Ok(s) -> s
+        Error(_) -> acc
+      }
+    })
+
+  Ok(
+    RuleStore(
+      ..store,
+      metadata: StoreMetadata(..store.metadata, version: export.version),
+    ),
+  )
+}
+
+/// Merge another store's exports into this store
+pub fn merge_export(
+  store: RuleStore,
+  export: StoreExport,
+) -> Result(RuleStore, StoreError) {
+  // Import rule sets (skip duplicates)
+  let store =
+    list.fold(export.rule_sets, store, fn(acc, rule_set) {
+      case get_rule_set(acc, rule_set.id) {
+        Ok(_) -> acc
+        // Skip existing
+        Error(_) -> {
+          case
+            create_rule_set(
+              acc,
+              rule_set.id,
+              rule_set.name,
+              rule_set.description,
+            )
+          {
+            Ok(s) -> s
+            Error(_) -> acc
+          }
+        }
+      }
+    })
+
+  Ok(store)
+}
+
+// ============ File-Based Persistence ============
+
+/// File persistence configuration
+pub type FileConfig {
+  FileConfig(
+    /// Base directory for store files
+    base_path: String,
+    /// Whether to create directories if missing
+    create_dirs: Bool,
+    /// Whether to create backups before overwriting
+    create_backup: Bool,
+    /// File extension to use
+    extension: String,
+  )
+}
+
+/// Default file configuration
+pub fn default_file_config() -> FileConfig {
+  FileConfig(
+    base_path: "./data/rules",
+    create_dirs: True,
+    create_backup: True,
+    extension: ".json",
+  )
+}
+
+/// File operation result
+pub type FileResult(a) {
+  FileOk(value: a)
+  FileError(error: FileError)
+}
+
+/// File operation errors
+pub type FileError {
+  /// File not found
+  FileNotFound(path: String)
+  /// Permission denied
+  PermissionDenied(path: String)
+  /// IO error
+  IoError(message: String)
+  /// Serialization error
+  SerializationFailed(message: String)
+}
+
+/// Get the file path for a store
+pub fn store_file_path(config: FileConfig, store_name: String) -> String {
+  config.base_path <> "/" <> store_name <> config.extension
+}
+
+/// Get the backup file path for a store
+pub fn store_backup_path(config: FileConfig, store_name: String) -> String {
+  config.base_path <> "/" <> store_name <> ".backup" <> config.extension
+}
+
+/// Format file error as string
+pub fn format_file_error(error: FileError) -> String {
+  case error {
+    FileNotFound(path) -> "File not found: " <> path
+    PermissionDenied(path) -> "Permission denied: " <> path
+    IoError(message) -> "IO error: " <> message
+    SerializationFailed(message) -> "Serialization failed: " <> message
+  }
+}
+
 // ============ Utility Functions ============
 
 /// Convert logic system to string
