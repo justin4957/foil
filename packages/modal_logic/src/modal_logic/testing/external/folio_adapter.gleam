@@ -299,8 +299,7 @@ fn detect_patterns(example: DatasetExample) -> List(FOLIOPattern) {
   let patterns = []
 
   let patterns = case
-    string.contains(all_text, "all ")
-    || string.contains(all_text, "every ")
+    string.contains(all_text, "all ") || string.contains(all_text, "every ")
   {
     True -> [UniversalQuantification, ..patterns]
     False -> patterns
@@ -315,8 +314,7 @@ fn detect_patterns(example: DatasetExample) -> List(FOLIOPattern) {
   }
 
   let patterns = case
-    string.contains(all_text, "if ")
-    || string.contains(all_text, "implies")
+    string.contains(all_text, "if ") || string.contains(all_text, "implies")
   {
     True -> [Conditional, ..patterns]
     False -> patterns
@@ -346,8 +344,7 @@ fn detect_patterns(example: DatasetExample) -> List(FOLIOPattern) {
   }
 
   let patterns = case
-    string.contains(all_text, " or ")
-    || string.contains(all_text, "either")
+    string.contains(all_text, " or ") || string.contains(all_text, "either")
   {
     True -> [Disjunction, ..patterns]
     False -> patterns
@@ -369,7 +366,9 @@ fn translate_sentence(
   // Check for universal quantification (translate to necessity if configured)
   case
     config.universal_as_necessity
-    && { string.starts_with(lower, "all ") || string.starts_with(lower, "every ") }
+    && {
+      string.starts_with(lower, "all ") || string.starts_with(lower, "every ")
+    }
   {
     True -> translate_universal(lower, base_atom)
     False ->
@@ -419,12 +418,7 @@ fn translate_universal(sentence: String, base_atom: String) -> Proposition {
 
   case parts {
     [subject, predicate] ->
-      Necessary(
-        Implies(
-          Atom(clean_term(subject)),
-          Atom(clean_term(predicate)),
-        ),
-      )
+      Necessary(Implies(Atom(clean_term(subject)), Atom(clean_term(predicate))))
     _ -> Atom(base_atom)
   }
 }
@@ -438,12 +432,7 @@ fn translate_existential(sentence: String, base_atom: String) -> Proposition {
 
   case parts {
     [subject, predicate] ->
-      Possible(
-        And(
-          Atom(clean_term(subject)),
-          Atom(clean_term(predicate)),
-        ),
-      )
+      Possible(And(Atom(clean_term(subject)), Atom(clean_term(predicate))))
     _ -> Atom(base_atom)
   }
 }
@@ -458,10 +447,7 @@ fn translate_conditional(sentence: String, base_atom: String) -> Proposition {
   let parts = string.split(cleaned, " then ")
   case parts {
     [antecedent, consequent] ->
-      Implies(
-        Atom(clean_term(antecedent)),
-        Atom(clean_term(consequent)),
-      )
+      Implies(Atom(clean_term(antecedent)), Atom(clean_term(consequent)))
     _ -> {
       // Try splitting on "implies"
       let parts2 = string.split(sentence, " implies ")
@@ -649,7 +635,9 @@ fn detect_logic_system(translation: FOLIOTranslation) -> LogicSystem {
   case list.contains(translation.detected_patterns, Modal) {
     True -> S5
     False ->
-      case list.contains(translation.detected_patterns, UniversalQuantification) {
+      case
+        list.contains(translation.detected_patterns, UniversalQuantification)
+      {
         True -> T
         False -> K
       }
@@ -753,9 +741,7 @@ fn calculate_average_premises(examples: List(DatasetExample)) -> Float {
     [] -> 0.0
     _ -> {
       let total =
-        list.fold(examples, 0, fn(acc, ex) {
-          acc + list.length(ex.premises)
-        })
+        list.fold(examples, 0, fn(acc, ex) { acc + list.length(ex.premises) })
       int.to_float(total) /. int.to_float(list.length(examples))
     }
   }

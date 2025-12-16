@@ -285,7 +285,9 @@ fn generate_rules_section(store: RuleStore, config: DocConfig) -> DocSection {
     |> list.map(fn(rule) { generate_rule_subsection(rule, config) })
 
   let summary =
-    "This section documents " <> int.to_string(list.length(rules)) <> " inference rules."
+    "This section documents "
+    <> int.to_string(list.length(rules))
+    <> " inference rules."
 
   DocSection(
     id: "rules",
@@ -376,7 +378,9 @@ fn generate_axioms_section(store: RuleStore, config: DocConfig) -> DocSection {
     |> list.map(fn(ax) { generate_axiom_subsection(ax, config) })
 
   let summary =
-    "This section documents " <> int.to_string(list.length(axioms)) <> " axioms."
+    "This section documents "
+    <> int.to_string(list.length(axioms))
+    <> " axioms."
 
   DocSection(
     id: "axioms",
@@ -583,10 +587,13 @@ fn generate_traces_section(
         case config.format {
           Markdown ->
             "#### " <> name <> "\n\nSteps: " <> int.to_string(trace.total_steps)
-          PlainText ->
-            name <> "\n  Steps: " <> int.to_string(trace.total_steps)
+          PlainText -> name <> "\n  Steps: " <> int.to_string(trace.total_steps)
           Html ->
-            "<h4>" <> name <> "</h4><p>Steps: " <> int.to_string(trace.total_steps) <> "</p>"
+            "<h4>"
+            <> name
+            <> "</h4><p>Steps: "
+            <> int.to_string(trace.total_steps)
+            <> "</p>"
         }
       })
       |> string.join("\n\n")
@@ -690,12 +697,14 @@ fn generate_soundness_result_subsection(
         [
           "**Status:** " <> status,
           "",
-          "**Sound in:** " <> case systems {
+          "**Sound in:** "
+            <> case systems {
             "" -> "(none)"
             s -> s
           },
           "",
-          "**Counterexamples:** " <> int.to_string(list.length(result.counterexamples)),
+          "**Counterexamples:** "
+            <> int.to_string(list.length(result.counterexamples)),
         ],
         "\n",
       )
@@ -704,12 +713,15 @@ fn generate_soundness_result_subsection(
         [
           "Status: " <> status,
           "Sound in: " <> systems,
-          "Counterexamples: " <> int.to_string(list.length(result.counterexamples)),
+          "Counterexamples: "
+            <> int.to_string(list.length(result.counterexamples)),
         ],
         "\n",
       )
     Html ->
-      "<p><strong>Status:</strong> " <> status <> "</p>"
+      "<p><strong>Status:</strong> "
+      <> status
+      <> "</p>"
       <> "<p><strong>Sound in:</strong> "
       <> systems
       <> "</p>"
@@ -808,9 +820,7 @@ fn format_header(
 
 /// Count total sections
 fn count_sections(sections: List(DocSection)) -> Int {
-  list.fold(sections, 0, fn(acc, s) {
-    acc + 1 + count_sections(s.subsections)
-  })
+  list.fold(sections, 0, fn(acc, s) { acc + 1 + count_sections(s.subsections) })
 }
 
 /// Count words in content

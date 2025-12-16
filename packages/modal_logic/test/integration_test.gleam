@@ -3,20 +3,20 @@
 //// Comprehensive integration tests ensuring all components of the
 //// validation testing suite work together correctly.
 
-import gleeunit/should
 import gleam/dict
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
+import gleeunit/should
 import modal_logic/proposition.{Atom, Implies, K, Necessary, S4, S5, T}
 import modal_logic/rules/axiom
 import modal_logic/rules/inference_rule.{
-  type Bindings, AnyAtom, InferenceRule, PatternNecessary,
-  apply_rule, match_pattern,
+  type Bindings, AnyAtom, InferenceRule, PatternNecessary, apply_rule,
+  match_pattern,
 }
 import modal_logic/rules/rule_builder.{
-  hypothetical_syllogism, modus_ponens, modus_tollens,
-  necessitation, modal_modus_ponens,
+  hypothetical_syllogism, modal_modus_ponens, modus_ponens, modus_tollens,
+  necessitation,
 }
 import modal_logic/rules/rule_store
 import modal_logic/testing/docs/doc_generator
@@ -79,10 +79,8 @@ pub fn rule_builder_to_application_test() {
     inference_rule.Applied(conclusion, _bindings) ->
       conclusion
       |> should.equal(q)
-    inference_rule.NoMatch(_) ->
-      should.fail()
-    inference_rule.DerivationFailed(_) ->
-      should.fail()
+    inference_rule.NoMatch(_) -> should.fail()
+    inference_rule.DerivationFailed(_) -> should.fail()
   }
 }
 
@@ -104,9 +102,13 @@ pub fn rule_store_versioning_workflow_test() {
   let updated_mp =
     InferenceRule(
       ..mp,
-      metadata: inference_rule.RuleMetadata(..mp.metadata, author: Some("Updated Author")),
+      metadata: inference_rule.RuleMetadata(
+        ..mp.metadata,
+        author: Some("Updated Author"),
+      ),
     )
-  let assert Ok(store) = rule_store.update_rule(store, updated_mp, Some("Added author"))
+  let assert Ok(store) =
+    rule_store.update_rule(store, updated_mp, Some("Added author"))
 
   // Verify version history
   let assert Ok(versioned) = rule_store.get_versioned_rule(store, mp.id)
@@ -342,12 +344,13 @@ pub fn rule_sets_integration_test() {
   let store = rule_store.standard_store()
 
   // Create a rule set
-  let assert Ok(store) = rule_store.create_rule_set(
-    store,
-    "test_set",
-    "Test Rule Set",
-    "A test rule set for integration testing"
-  )
+  let assert Ok(store) =
+    rule_store.create_rule_set(
+      store,
+      "test_set",
+      "Test Rule Set",
+      "A test rule set for integration testing",
+    )
 
   // Should be able to retrieve the created set
   let assert Ok(test_set) = rule_store.get_rule_set(store, "test_set")

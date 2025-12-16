@@ -2,13 +2,13 @@
 ////
 //// Tests for the documentation auto-generation module.
 
-import gleeunit/should
 import gleam/string
+import gleeunit/should
 import modal_logic/rules/rule_store
 import modal_logic/testing/docs/doc_generator.{
   type DocSection, DocConfig, DocSection, Html, Markdown, PlainText,
-  comprehensive_config, default_config, generate_soundness_doc, generate_store_doc,
-  markdown_config, render, summary,
+  comprehensive_config, default_config, generate_soundness_doc,
+  generate_store_doc, markdown_config, render, summary,
 }
 import modal_logic/testing/validation/soundness_checker
 
@@ -103,7 +103,8 @@ pub fn generate_store_doc_no_toc_test() {
 
 pub fn generate_store_doc_no_rules_test() {
   let store = rule_store.new()
-  let config = DocConfig(..default_config(), include_rules: False, include_toc: False)
+  let config =
+    DocConfig(..default_config(), include_rules: False, include_toc: False)
 
   let doc = generate_store_doc(store, config)
 
@@ -131,7 +132,13 @@ fn has_section_with_id(sections: List(DocSection), id: String) -> Bool {
 
 pub fn render_markdown_test() {
   let store = rule_store.new()
-  let config = DocConfig(..default_config(), include_toc: False, include_rules: False, include_axioms: False)
+  let config =
+    DocConfig(
+      ..default_config(),
+      include_toc: False,
+      include_rules: False,
+      include_axioms: False,
+    )
 
   let doc = generate_store_doc(store, config)
   let rendered = render(doc)
@@ -144,11 +151,14 @@ pub fn render_markdown_test() {
 
 pub fn render_plaintext_test() {
   let store = rule_store.new()
-  let config = DocConfig(..default_config(),
-    format: PlainText,
-    include_toc: False,
-    include_rules: False,
-    include_axioms: False)
+  let config =
+    DocConfig(
+      ..default_config(),
+      format: PlainText,
+      include_toc: False,
+      include_rules: False,
+      include_axioms: False,
+    )
 
   let doc = generate_store_doc(store, config)
   let rendered = render(doc)
@@ -166,11 +176,14 @@ pub fn render_plaintext_test() {
 
 pub fn render_html_test() {
   let store = rule_store.new()
-  let config = DocConfig(..default_config(),
-    format: Html,
-    include_toc: False,
-    include_rules: False,
-    include_axioms: False)
+  let config =
+    DocConfig(
+      ..default_config(),
+      format: Html,
+      include_toc: False,
+      include_rules: False,
+      include_axioms: False,
+    )
 
   let doc = generate_store_doc(store, config)
   let rendered = render(doc)
@@ -252,13 +265,14 @@ pub fn doc_metadata_test() {
 // ============ Section Structure Tests ============
 
 pub fn doc_section_structure_test() {
-  let section = DocSection(
-    id: "test-section",
-    title: "Test Section",
-    content: "Test content here",
-    subsections: [],
-    level: 1,
-  )
+  let section =
+    DocSection(
+      id: "test-section",
+      title: "Test Section",
+      content: "Test content here",
+      subsections: [],
+      level: 1,
+    )
 
   section.id
   |> should.equal("test-section")
@@ -268,21 +282,23 @@ pub fn doc_section_structure_test() {
 }
 
 pub fn doc_section_with_subsections_test() {
-  let subsection = DocSection(
-    id: "sub-1",
-    title: "Subsection 1",
-    content: "Subsection content",
-    subsections: [],
-    level: 2,
-  )
+  let subsection =
+    DocSection(
+      id: "sub-1",
+      title: "Subsection 1",
+      content: "Subsection content",
+      subsections: [],
+      level: 2,
+    )
 
-  let section = DocSection(
-    id: "parent",
-    title: "Parent Section",
-    content: "Parent content",
-    subsections: [subsection],
-    level: 1,
-  )
+  let section =
+    DocSection(
+      id: "parent",
+      title: "Parent Section",
+      content: "Parent content",
+      subsections: [subsection],
+      level: 1,
+    )
 
   section.subsections
   |> should.not_equal([])
@@ -292,7 +308,8 @@ pub fn doc_section_with_subsections_test() {
 
 pub fn rules_section_markdown_format_test() {
   let store = rule_store.standard_store()
-  let config = DocConfig(..default_config(), include_toc: False, include_axioms: False)
+  let config =
+    DocConfig(..default_config(), include_toc: False, include_axioms: False)
 
   let doc = generate_store_doc(store, config)
   let rendered = render(doc)
@@ -305,7 +322,13 @@ pub fn rules_section_markdown_format_test() {
 
 pub fn rules_section_plaintext_format_test() {
   let store = rule_store.standard_store()
-  let config = DocConfig(..default_config(), format: PlainText, include_toc: False, include_axioms: False)
+  let config =
+    DocConfig(
+      ..default_config(),
+      format: PlainText,
+      include_toc: False,
+      include_axioms: False,
+    )
 
   let doc = generate_store_doc(store, config)
   let rendered = render(doc)
@@ -318,7 +341,8 @@ pub fn rules_section_plaintext_format_test() {
 
 pub fn axioms_section_test() {
   let store = rule_store.standard_store()
-  let config = DocConfig(..default_config(), include_toc: False, include_rules: False)
+  let config =
+    DocConfig(..default_config(), include_toc: False, include_rules: False)
 
   let doc = generate_store_doc(store, config)
   let rendered = render(doc)
