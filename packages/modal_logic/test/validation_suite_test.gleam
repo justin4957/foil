@@ -4,10 +4,15 @@
 
 import gleam/list
 import gleam/option
+import gleam/string
 import gleeunit/should
 import modal_logic/proposition.{S5}
 import modal_logic/rules/rule_builder
 import modal_logic/rules/rule_store
+import modal_logic/testing/validation/accuracy_integration.{
+  all_fixtures, argument_to_fixture, convert_to_accuracy_metrics,
+  format_combined_report, quick_accuracy_check, run_with_accuracy_metrics,
+}
 import modal_logic/testing/validation/argument_corpus.{
   Classical, Deontic, Epistemic, Fallacy, Historical, Modal,
 }
@@ -265,4 +270,105 @@ pub fn format_batch_result_test() {
   let formatted = format_batch_result(result)
 
   formatted |> should.not_equal("")
+}
+
+// ============ Accuracy Integration Tests ============
+
+pub fn run_with_accuracy_metrics_test() {
+  let store = rule_store.standard_store()
+  let config =
+    philosophical_tester.PhilosophicalTestConfig(
+      ..default_config(),
+      max_arguments: option.Some(5),
+    )
+
+  let result = run_with_accuracy_metrics(store, config)
+
+  // Should have philosophical results
+  result.philosophical.total_tested |> should.not_equal(0)
+
+  // Should have accuracy metrics
+  result.accuracy.overall.total_tests |> should.not_equal(0)
+
+  // Should have category breakdown
+  result.category_breakdown |> should.not_equal([])
+}
+
+pub fn convert_to_accuracy_metrics_test() {
+  let store = rule_store.standard_store()
+  let config =
+    philosophical_tester.PhilosophicalTestConfig(
+      ..default_config(),
+      max_arguments: option.Some(3),
+    )
+
+  let philo_result = run_tests(store, config)
+  let accuracy = convert_to_accuracy_metrics(philo_result)
+
+  // Total tests should match
+  accuracy.overall.total_tests |> should.equal(philo_result.total_tested)
+
+  // Overall accuracy should be between 0 and 100
+  { accuracy.overall.accuracy >=. 0.0 } |> should.be_true
+  { accuracy.overall.accuracy <=. 100.0 } |> should.be_true
+
+  // Grade should be valid
+  list.contains(["A", "B", "C", "D", "F"], accuracy.overall.grade)
+  |> should.be_true
+}
+
+pub fn argument_to_fixture_test() {
+  case argument_corpus.get_argument("classical_modus_ponens") {
+    option.Some(arg) -> {
+      let fixture = argument_to_fixture(arg)
+
+      fixture.id |> should.equal("classical_modus_ponens")
+      fixture.name |> should.equal("Modus Ponens")
+      list.length(fixture.expected_premises) |> should.equal(2)
+    }
+    option.None -> panic as "Expected to find argument"
+  }
+}
+
+pub fn all_fixtures_test() {
+  let fixtures = all_fixtures()
+
+  // Should have fixtures for all arguments
+  let args = argument_corpus.all_arguments()
+  list.length(fixtures) |> should.equal(list.length(args))
+}
+
+pub fn format_combined_report_test() {
+  let store = rule_store.standard_store()
+  let config =
+    philosophical_tester.PhilosophicalTestConfig(
+      ..default_config(),
+      max_arguments: option.Some(3),
+    )
+
+  let result = run_with_accuracy_metrics(store, config)
+  let report = format_combined_report(result)
+
+  // Report should contain key sections
+  report
+  |> string.contains("PHILOSOPHICAL ARGUMENT ACCURACY REPORT")
+  |> should.be_true
+  report |> string.contains("Summary") |> should.be_true
+  report |> string.contains("Category Breakdown") |> should.be_true
+  report |> string.contains("Validation Metrics") |> should.be_true
+}
+
+pub fn quick_accuracy_check_test() {
+  let store = rule_store.standard_store()
+  let config =
+    philosophical_tester.PhilosophicalTestConfig(
+      ..default_config(),
+      max_arguments: option.Some(3),
+    )
+
+  let #(_passed, score) = quick_accuracy_check(store, config)
+
+  // Score should be between 0 and 1
+  { score >=. 0.0 } |> should.be_true
+  { score <=. 1.0 } |> should.be_true
 }
