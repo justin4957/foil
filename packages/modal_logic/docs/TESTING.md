@@ -618,6 +618,170 @@ Run before each release:
 
 ---
 
+## Validation Testing Suite
+
+The validation testing suite provides comprehensive testing for modal logic rules against philosophical arguments, external datasets, and automated soundness checking.
+
+### Test Modules
+
+| Test File | Description | Test Count |
+|-----------|-------------|------------|
+| `rule_builder_test.gleam` | Rule builder DSL tests | 25 |
+| `rule_store_test.gleam` | Rule store with versioning | 26 |
+| `validation_suite_test.gleam` | Philosophical argument validation | 24 |
+| `doc_generator_test.gleam` | Documentation generator | 19 |
+| `integration_test.gleam` | End-to-end integration | 21 |
+
+### Running Validation Tests
+
+```bash
+# Run all tests (includes validation suite)
+gleam test
+
+# Build and verify
+gleam build
+```
+
+### Rule Builder DSL
+
+The rule builder provides a fluent API for constructing inference rules:
+
+```gleam
+import modal_logic/rules/rule_builder
+
+// Use pre-built rules
+let mp = rule_builder.modus_ponens()
+let mt = rule_builder.modus_tollens()
+let nec = rule_builder.necessitation()
+
+// Build custom rules
+let assert Ok(rule) =
+  rule_builder.inference_rule("custom_rule")
+  |> rule_builder.named("Custom Rule")
+  |> rule_builder.with_premise(rule_builder.atom("p"))
+  |> rule_builder.with_premise(rule_builder.implies(
+    rule_builder.atom("p"),
+    rule_builder.atom("q")
+  ))
+  |> rule_builder.derives(rule_builder.atom("q"))
+  |> rule_builder.valid_in_all()
+  |> rule_builder.build()
+```
+
+### Rule Store Operations
+
+```gleam
+import modal_logic/rules/rule_store
+
+// Create and populate store
+let store = rule_store.standard_store()
+
+// Get rules and axioms
+let rules = rule_store.list_rules(store)
+let axioms = rule_store.list_axioms(store)
+
+// Export store data
+let export = rule_store.export(store)
+let summary = rule_store.export_summary(export)
+```
+
+### Philosophical Argument Testing
+
+```gleam
+import modal_logic/testing/validation/philosophical_tester
+
+// Configure and run tests
+let store = rule_store.standard_store()
+let config = philosophical_tester.default_config()
+let result = philosophical_tester.run_tests(store, config)
+
+// Analyze results
+io.println("Tested: " <> int.to_string(result.total_tested))
+io.println("Passed: " <> int.to_string(result.correctly_validated))
+```
+
+### Soundness Checking
+
+```gleam
+import modal_logic/testing/validation/soundness_checker
+
+// Check rule soundness
+let store = rule_store.standard_store()
+let result = soundness_checker.check_store_soundness(store)
+
+// Review results
+io.println("Rules checked: " <> int.to_string(result.rules_checked))
+io.println("Sound rules: " <> int.to_string(result.sound_rules))
+```
+
+### Documentation Generation
+
+```gleam
+import modal_logic/testing/docs/doc_generator
+
+// Generate documentation
+let store = rule_store.standard_store()
+let config = doc_generator.default_config()
+let doc = doc_generator.generate_store_doc(store, config)
+
+// Render to string
+let output = doc_generator.render(doc)
+
+// Generate from test results
+let test_doc = doc_generator.generate_test_doc(test_result, config)
+
+// Generate from soundness analysis
+let soundness_doc = doc_generator.generate_soundness_doc(soundness_result, config)
+```
+
+### External Dataset Integration
+
+```gleam
+// Stanford Encyclopedia of Philosophy
+import modal_logic/testing/external/sep_adapter
+
+let fixtures = sep_adapter.get_mock_fixtures()
+
+// FOLIO dataset
+import modal_logic/testing/external/folio_adapter
+
+let config = folio_adapter.default_config()
+let folio_fixtures = folio_adapter.get_all_fixtures(config)
+```
+
+### Integration Test Workflow
+
+The integration tests verify the complete pipeline:
+
+1. **Rule Building** - Construct rules using DSL
+2. **Store Management** - Add, update, and version rules
+3. **Argument Corpus** - Test against philosophical arguments
+4. **Soundness Checking** - Verify rule soundness
+5. **Documentation** - Generate reports from results
+
+```gleam
+// Complete workflow example
+let store = rule_store.standard_store()
+let test_config = philosophical_tester.default_config()
+let test_result = philosophical_tester.run_tests(store, test_config)
+
+let doc_config = doc_generator.comprehensive_config()
+let doc = doc_generator.generate_test_doc(test_result, doc_config)
+let output = doc_generator.render(doc)
+```
+
+### Test Categories
+
+| Category | Arguments | Description |
+|----------|-----------|-------------|
+| Modal | 5+ | Necessity, possibility, S5 reasoning |
+| Epistemic | 5+ | Knowledge, belief, common knowledge |
+| Deontic | 3+ | Obligation, permission |
+| Classical | 5+ | Propositional logic patterns |
+| Fallacy | 5+ | Invalid argument patterns |
+
+---
+
 ## Troubleshooting
 
 ### Common Issues
