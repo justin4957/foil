@@ -6,9 +6,10 @@ import gleam/string
 import gleeunit/should
 import modal_logic/rules/rule_store
 import modal_logic/testing/docs/doc_generator.{
-  type DocSection, DocConfig, DocSection, Html, Markdown, PlainText,
+  type DocSection, DocConfig, DocSection, Html, Json, Markdown, PlainText,
   comprehensive_config, default_config, generate_soundness_doc,
-  generate_store_doc, markdown_config, render, summary,
+  generate_store_doc, html_config, json_config, markdown_config, render,
+  render_html, render_json, summary,
 }
 import modal_logic/testing/validation/soundness_checker
 
@@ -351,4 +352,180 @@ pub fn axioms_section_test() {
   rendered
   |> string.contains("Axiom")
   |> should.be_true
+}
+
+// ============ JSON Format Tests ============
+
+pub fn json_config_test() {
+  let config = json_config()
+
+  config.format |> should.equal(Json)
+  config.include_toc |> should.be_false
+}
+
+pub fn html_config_test() {
+  let config = html_config()
+
+  config.format |> should.equal(Html)
+  config.include_traces |> should.be_true
+}
+
+pub fn render_json_basic_test() {
+  let store = rule_store.new()
+  let config =
+    DocConfig(
+      ..default_config(),
+      format: Json,
+      include_toc: False,
+      include_rules: False,
+      include_axioms: False,
+    )
+
+  let doc = generate_store_doc(store, config)
+  let rendered = render(doc)
+
+  // JSON format should have quotes and colons
+  rendered |> string.contains(":") |> should.be_true
+}
+
+pub fn render_json_full_test() {
+  let store = rule_store.standard_store()
+  let config = json_config()
+
+  let doc = generate_store_doc(store, config)
+  let rendered = render_json(doc)
+
+  // Should have proper JSON structure
+  rendered |> string.contains("{") |> should.be_true
+  rendered |> string.contains("}") |> should.be_true
+  rendered |> string.contains("\"title\":") |> should.be_true
+  rendered |> string.contains("\"sections\":") |> should.be_true
+  rendered |> string.contains("\"metadata\":") |> should.be_true
+}
+
+pub fn render_json_has_format_field_test() {
+  let store = rule_store.new()
+  let config = json_config()
+
+  let doc = generate_store_doc(store, config)
+  let rendered = render_json(doc)
+
+  rendered |> string.contains("\"format\":") |> should.be_true
+}
+
+// ============ HTML Styling Tests ============
+
+pub fn render_html_full_document_test() {
+  let store = rule_store.standard_store()
+  let config = html_config()
+
+  let doc = generate_store_doc(store, config)
+  let rendered = render_html(doc)
+
+  // Should be a complete HTML document
+  rendered |> string.contains("<!DOCTYPE html>") |> should.be_true
+  rendered |> string.contains("<html") |> should.be_true
+  rendered |> string.contains("</html>") |> should.be_true
+}
+
+pub fn render_html_has_css_test() {
+  let store = rule_store.standard_store()
+  let config = html_config()
+
+  let doc = generate_store_doc(store, config)
+  let rendered = render_html(doc)
+
+  // Should have CSS styles
+  rendered |> string.contains("<style>") |> should.be_true
+  rendered |> string.contains("</style>") |> should.be_true
+}
+
+pub fn render_html_has_font_styles_test() {
+  let store = rule_store.new()
+  let config = html_config()
+
+  let doc = generate_store_doc(store, config)
+  let rendered = render_html(doc)
+
+  // Should have font-family styles
+  rendered |> string.contains("font-family") |> should.be_true
+}
+
+pub fn render_html_has_color_variables_test() {
+  let store = rule_store.new()
+  let config = html_config()
+
+  let doc = generate_store_doc(store, config)
+  let rendered = render_html(doc)
+
+  // Should have CSS variables
+  rendered |> string.contains("--primary-color") |> should.be_true
+}
+
+pub fn render_html_has_responsive_styles_test() {
+  let store = rule_store.new()
+  let config = html_config()
+
+  let doc = generate_store_doc(store, config)
+  let rendered = render_html(doc)
+
+  // Should have media queries for responsiveness
+  rendered |> string.contains("@media") |> should.be_true
+}
+
+pub fn render_html_has_container_test() {
+  let store = rule_store.new()
+  let config = html_config()
+
+  let doc = generate_store_doc(store, config)
+  let rendered = render_html(doc)
+
+  // Should have doc-container class
+  rendered |> string.contains("doc-container") |> should.be_true
+}
+
+pub fn render_html_has_table_styles_test() {
+  let store = rule_store.standard_store()
+  let config = html_config()
+
+  let doc = generate_store_doc(store, config)
+  let rendered = render_html(doc)
+
+  // Should have table styling
+  rendered |> string.contains("border-collapse") |> should.be_true
+}
+
+// ============ JSON Section Structure Tests ============
+
+pub fn json_section_has_id_test() {
+  let store = rule_store.standard_store()
+  let config = json_config()
+
+  let doc = generate_store_doc(store, config)
+  let rendered = render_json(doc)
+
+  // Sections should have id field
+  rendered |> string.contains("\"id\":") |> should.be_true
+}
+
+pub fn json_section_has_level_test() {
+  let store = rule_store.standard_store()
+  let config = json_config()
+
+  let doc = generate_store_doc(store, config)
+  let rendered = render_json(doc)
+
+  // Sections should have level field
+  rendered |> string.contains("\"level\":") |> should.be_true
+}
+
+pub fn json_metadata_has_word_count_test() {
+  let store = rule_store.standard_store()
+  let config = json_config()
+
+  let doc = generate_store_doc(store, config)
+  let rendered = render_json(doc)
+
+  // Metadata should have word_count field
+  rendered |> string.contains("\"word_count\":") |> should.be_true
 }
