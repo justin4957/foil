@@ -10,8 +10,8 @@ import gleeunit/should
 import modal_logic/proposition.{K, T}
 import modal_logic/testing/external/fallacy_adapter.{
   AdHominem, AffirmingConsequent, AffirmingDisjunct, CircularReasoning,
-  DenyingAntecedent, FalseDilemma, HastyGeneralization, SlipperySlope,
-  StrawMan, UndistributedMiddle, default_config, extended_fallacy_examples,
+  DenyingAntecedent, FalseDilemma, HastyGeneralization, SlipperySlope, StrawMan,
+  UndistributedMiddle, default_config, extended_fallacy_examples,
   formal_fallacy_config, get_all_fixtures, get_formal_fixtures,
   get_mock_fixtures,
 }

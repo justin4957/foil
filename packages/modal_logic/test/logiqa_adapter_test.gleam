@@ -292,8 +292,10 @@ pub fn filter_by_reasoning_type_test() {
 pub fn max_examples_limit_test() {
   // max_examples limits examples taken, not fixtures generated
   // Each example may generate multiple fixtures
-  let config_low = logiqa_adapter.LogiQAConfig(..default_config(), max_examples: 2)
-  let config_high = logiqa_adapter.LogiQAConfig(..default_config(), max_examples: 10)
+  let config_low =
+    logiqa_adapter.LogiQAConfig(..default_config(), max_examples: 2)
+  let config_high =
+    logiqa_adapter.LogiQAConfig(..default_config(), max_examples: 10)
 
   let fixtures_low = get_all_fixtures(config_low)
   let fixtures_high = get_all_fixtures(config_high)
