@@ -15,6 +15,7 @@ import modal_logic/proposition.{
   type LogicSystem, type Proposition, Atom, Implies, K, Necessary, Possible, S5,
   T,
 }
+import modal_logic/testing/external/api_client.{type ClientState}
 import modal_logic/testing/fixtures/fixtures.{type TestFixture, TestFixture}
 import modal_logic/testing/test_config.{
   Easy, ExpectedValid, ExternalDataset, Hard, Medium,
@@ -259,8 +260,6 @@ pub fn mock_entries() -> List(SEPEntry) {
 
 /// Extract arguments from an SEP entry (simplified mock implementation)
 pub fn extract_arguments(entry: SEPEntry) -> List(SEPArgument) {
-  let content_lower = string.lowercase(entry.content)
-
   // Detect argument patterns based on entry content
   case entry.slug {
     "logic-modal" -> extract_modal_arguments(entry)
@@ -498,5 +497,306 @@ fn logic_system_to_string(system: LogicSystem) -> String {
     proposition.S5 -> "S5"
     proposition.KD -> "KD"
     proposition.KD45 -> "KD45"
+  }
+}
+
+// ============ SEP Client Integration ============
+
+/// SEP client with integrated API client
+pub type SEPClient {
+  SEPClient(
+    /// SEP-specific configuration
+    config: SEPConfig,
+    /// Underlying API client state
+    api_client: ClientState,
+    /// Fetched entries cache
+    entries_cache: Dict(String, SEPEntry),
+    /// Total entries fetched
+    entries_fetched: Int,
+    /// Total extraction attempts
+    extraction_attempts: Int,
+  )
+}
+
+/// Create new SEP client from config
+pub fn new_client(config: SEPConfig) -> SEPClient {
+  let client_config =
+    api_client.ClientConfig(
+      base_url: config.api_url,
+      timeout_ms: 30_000,
+      max_retries: 3,
+      retry_delay_ms: 1000,
+      rate_limit_per_minute: config.rate_limit,
+      cache_duration_sec: config.cache_duration,
+      user_agent: "modal-logic-sep-adapter/1.0",
+    )
+
+  SEPClient(
+    config: config,
+    api_client: api_client.new_client(client_config),
+    entries_cache: dict.new(),
+    entries_fetched: 0,
+    extraction_attempts: 0,
+  )
+}
+
+/// Create SEP client with default configuration
+pub fn default_client() -> SEPClient {
+  new_client(default_config())
+}
+
+/// Fetch entry with retry logic (simulated)
+pub fn fetch_entry_with_retry(
+  client: SEPClient,
+  slug: String,
+  current_time: Int,
+  max_retries: Int,
+) -> #(SEPClient, SEPResult(SEPEntry)) {
+  fetch_entry_retry_helper(client, slug, current_time, max_retries, 0, "")
+}
+
+/// Helper for retry logic
+fn fetch_entry_retry_helper(
+  client: SEPClient,
+  slug: String,
+  current_time: Int,
+  max_retries: Int,
+  attempt: Int,
+  last_error: String,
+) -> #(SEPClient, SEPResult(SEPEntry)) {
+  case attempt >= max_retries {
+    True -> {
+      let error_msg = case last_error {
+        "" -> "Max retries exceeded"
+        err -> "Max retries exceeded: " <> err
+      }
+      #(client, SEPError(NetworkError(error_msg)))
+    }
+    False -> {
+      // Check if entry is in local cache
+      case dict.get(client.entries_cache, slug) {
+        Ok(entry) -> #(client, SEPOk(entry))
+        Error(_) -> {
+          // Try to fetch using API client
+          let request = api_client.get("/entries/" <> slug <> "/")
+
+          let #(updated_api_client, result) =
+            api_client.simulate_request(client.api_client, request, current_time)
+
+          let client = SEPClient(..client, api_client: updated_api_client)
+
+          case result {
+            api_client.ClientOk(response) -> {
+              case response.status {
+                200 -> {
+                  // Parse response into SEPEntry (simplified - use mock for matching slug)
+                  let entry = find_mock_entry(slug)
+                  case entry {
+                    Some(e) -> {
+                      let new_cache = dict.insert(client.entries_cache, slug, e)
+                      let new_client =
+                        SEPClient(
+                          ..client,
+                          entries_cache: new_cache,
+                          entries_fetched: client.entries_fetched + 1,
+                        )
+                      #(new_client, SEPOk(e))
+                    }
+                    None -> #(client, SEPError(EntryNotFound(slug)))
+                  }
+                }
+                404 -> #(client, SEPError(EntryNotFound(slug)))
+                429 -> {
+                  // Rate limited - retry
+                  fetch_entry_retry_helper(
+                    client,
+                    slug,
+                    current_time + 1,
+                    max_retries,
+                    attempt + 1,
+                    "Rate limited",
+                  )
+                }
+                status -> {
+                  // Other error - retry for server errors
+                  case status >= 500 {
+                    True ->
+                      fetch_entry_retry_helper(
+                        client,
+                        slug,
+                        current_time,
+                        max_retries,
+                        attempt + 1,
+                        "Server error: " <> int.to_string(status),
+                      )
+                    False ->
+                      #(
+                        client,
+                        SEPError(NetworkError(
+                          "HTTP " <> int.to_string(status),
+                        )),
+                      )
+                  }
+                }
+              }
+            }
+            api_client.ClientErr(err) -> {
+              case api_client.is_retryable_error(err) {
+                True ->
+                  fetch_entry_retry_helper(
+                    client,
+                    slug,
+                    current_time,
+                    max_retries,
+                    attempt + 1,
+                    api_client.format_error(err),
+                  )
+                False -> #(client, SEPError(NetworkError(api_client.format_error(err))))
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/// Find mock entry by slug
+fn find_mock_entry(slug: String) -> Option(SEPEntry) {
+  mock_entries()
+  |> list.find(fn(e) { e.slug == slug })
+  |> option.from_result
+}
+
+/// Fetch multiple entries
+pub fn fetch_entries(
+  client: SEPClient,
+  slugs: List(String),
+  current_time: Int,
+) -> #(SEPClient, List(#(String, SEPResult(SEPEntry)))) {
+  list.fold(slugs, #(client, []), fn(acc, slug) {
+    let #(current_client, results) = acc
+    let #(updated_client, result) =
+      fetch_entry_with_retry(current_client, slug, current_time, 3)
+    #(updated_client, [#(slug, result), ..results])
+  })
+}
+
+/// Fetch and extract arguments from multiple entries
+pub fn fetch_and_extract(
+  client: SEPClient,
+  slugs: List(String),
+  current_time: Int,
+) -> #(SEPClient, List(SEPArgument)) {
+  let #(updated_client, results) = fetch_entries(client, slugs, current_time)
+
+  let arguments =
+    results
+    |> list.filter_map(fn(pair) {
+      case pair.1 {
+        SEPOk(entry) -> Ok(extract_arguments(entry))
+        SEPError(_) -> Error(Nil)
+      }
+    })
+    |> list.flatten
+
+  let final_client =
+    SEPClient(
+      ..updated_client,
+      extraction_attempts: updated_client.extraction_attempts + list.length(slugs),
+    )
+
+  #(final_client, arguments)
+}
+
+/// Get all modal logic arguments from SEP
+pub fn get_modal_arguments(
+  client: SEPClient,
+  current_time: Int,
+) -> #(SEPClient, List(SEPArgument)) {
+  fetch_and_extract(client, modal_logic_entries(), current_time)
+}
+
+/// Get all relevant arguments from SEP
+pub fn get_all_arguments(
+  client: SEPClient,
+  current_time: Int,
+) -> #(SEPClient, List(SEPArgument)) {
+  let entries = list.take(all_relevant_entries(), client.config.max_entries)
+  fetch_and_extract(client, entries, current_time)
+}
+
+// ============ Client Statistics ============
+
+/// Get SEP client statistics
+pub fn client_statistics(client: SEPClient) -> SEPClientStatistics {
+  let api_stats = api_client.client_stats(client.api_client)
+
+  SEPClientStatistics(
+    entries_fetched: client.entries_fetched,
+    entries_cached: dict.size(client.entries_cache),
+    extraction_attempts: client.extraction_attempts,
+    api_requests: api_stats.successful_requests + api_stats.failed_requests,
+    cache_hit_rate: api_stats.cache.hit_rate,
+    rate_limited_count: api_stats.rate_limiter.rate_limited,
+  )
+}
+
+/// SEP client statistics
+pub type SEPClientStatistics {
+  SEPClientStatistics(
+    entries_fetched: Int,
+    entries_cached: Int,
+    extraction_attempts: Int,
+    api_requests: Int,
+    cache_hit_rate: Float,
+    rate_limited_count: Int,
+  )
+}
+
+/// Format client statistics
+pub fn format_client_statistics(stats: SEPClientStatistics) -> String {
+  string.concat([
+    "SEP Client Statistics\n",
+    "=====================\n",
+    "Entries Fetched: ",
+    int.to_string(stats.entries_fetched),
+    "\n",
+    "Entries Cached: ",
+    int.to_string(stats.entries_cached),
+    "\n",
+    "Extraction Attempts: ",
+    int.to_string(stats.extraction_attempts),
+    "\n",
+    "API Requests: ",
+    int.to_string(stats.api_requests),
+    "\n",
+    "Cache Hit Rate: ",
+    float_to_percent(stats.cache_hit_rate),
+    "\n",
+    "Rate Limited: ",
+    int.to_string(stats.rate_limited_count),
+    "\n",
+  ])
+}
+
+/// Format float as percentage
+fn float_to_percent(f: Float) -> String {
+  let pct = float_to_int(f *. 100.0)
+  int.to_string(pct) <> "%"
+}
+
+/// Simple float to int conversion
+fn float_to_int(f: Float) -> Int {
+  case f <. 0.0 {
+    True -> 0
+    False -> float_to_int_helper(f, 0)
+  }
+}
+
+fn float_to_int_helper(f: Float, acc: Int) -> Int {
+  case f <. 1.0 {
+    True -> acc
+    False -> float_to_int_helper(f -. 1.0, acc + 1)
   }
 }
