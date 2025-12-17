@@ -629,8 +629,13 @@ The validation testing suite provides comprehensive testing for modal logic rule
 | `rule_builder_test.gleam` | Rule builder DSL tests | 25 |
 | `rule_store_test.gleam` | Rule store with versioning | 26 |
 | `validation_suite_test.gleam` | Philosophical argument validation | 24 |
-| `doc_generator_test.gleam` | Documentation generator | 19 |
+| `doc_generator_test.gleam` | Documentation generator | 48 |
+| `coverage_report_test.gleam` | Coverage report generation | 43 |
 | `integration_test.gleam` | End-to-end integration | 21 |
+| `rule_integration_test.gleam` | Rule pipeline integration | 40+ |
+| `benchmark_test.gleam` | Performance benchmarks | 20+ |
+| `logiqa_adapter_test.gleam` | LogiQA dataset adapter | 25 |
+| `folio_adapter_test.gleam` | FOLIO dataset adapter | 24 |
 
 ### Running Validation Tests
 
@@ -779,6 +784,208 @@ let output = doc_generator.render(doc)
 | Deontic | 3+ | Obligation, permission |
 | Classical | 5+ | Propositional logic patterns |
 | Fallacy | 5+ | Invalid argument patterns |
+
+---
+
+## Rule Integration Testing
+
+The `rule_integration_test.gleam` module provides comprehensive tests for the complete rule pipeline from construction to validation and documentation.
+
+### Pipeline Stages Tested
+
+1. **Rule Building** - Construction of inference rules using the DSL
+2. **Rule Storage** - Adding, updating, and versioning rules in the store
+3. **Rule Application** - Pattern matching and rule application to propositions
+4. **Validation** - Testing rules against philosophical arguments
+5. **Soundness Checking** - Verifying rule soundness properties
+6. **Documentation** - Generating documentation from results
+
+### Running Integration Tests
+
+```bash
+# Run all integration tests
+gleam test
+
+# Tests are automatically included in the test suite
+```
+
+### Key Integration Tests
+
+| Test | Description |
+|------|-------------|
+| `complete_pipeline_test` | Full build -> store -> test -> doc pipeline |
+| `rule_builder_to_application_test` | Rule construction to actual application |
+| `validation_pipeline_test` | End-to-end validation testing |
+| `doc_from_store_test` | Documentation generation from rule store |
+| `coverage_report_pipeline_test` | Coverage report generation |
+
+### Example: Complete Pipeline Test
+
+```gleam
+// 1. Build rules
+let mp = rule_builder.modus_ponens()
+let nec = rule_builder.necessitation()
+
+// 2. Create and populate store
+let store = rule_store.new()
+let assert Ok(store) = rule_store.add_rule(store, mp)
+let assert Ok(store) = rule_store.add_rule(store, nec)
+let assert Ok(store) = rule_store.add_axiom(store, axiom.k_axiom())
+
+// 3. Run validation tests
+let test_config = philosophical_tester.default_config()
+let test_result = philosophical_tester.run_tests(store, test_config)
+
+// 4. Check soundness
+let soundness_result = soundness_checker.check_store_soundness(store)
+
+// 5. Generate documentation
+let doc = doc_generator.generate_store_doc(store, doc_generator.default_config())
+let coverage = coverage_report.generate_report(store, test_result, coverage_report.default_config())
+```
+
+---
+
+## Performance Benchmarks
+
+The `benchmark_test.gleam` module provides performance tests to verify the system operates within acceptable bounds.
+
+### Benchmark Categories
+
+| Category | Tests | Purpose |
+|----------|-------|---------|
+| Rule Application | 4 | Measure rule application performance |
+| Rule Store | 4 | Store operation scalability |
+| Validation | 3 | Validation pipeline performance |
+| Documentation | 3 | Documentation generation speed |
+| Scalability | 2 | Linear scaling verification |
+| Memory | 2 | Memory efficiency checks |
+
+### Performance Targets
+
+| Operation | Target |
+|-----------|--------|
+| Single rule application | < 1ms |
+| 100 rule applications | < 100ms |
+| Pattern matching (complex) | < 1ms |
+| Rule store creation | < 10ms |
+| Documentation generation | < 100ms |
+| Coverage report | < 50ms |
+
+### Running Benchmarks
+
+```bash
+# Run all tests including benchmarks
+gleam test
+
+# Benchmarks are included in the standard test suite
+# For isolated benchmark runs, check test output for timing
+```
+
+### Scalability Testing
+
+The benchmarks verify that operations scale linearly:
+
+```gleam
+// Test with increasing sizes
+let sizes = [10, 50, 100]
+
+list.each(sizes, fn(size) {
+  let results = list.range(1, size)
+    |> list.map(fn(_) { apply_rule(mp, [p, implication]) })
+
+  // Verify all succeed
+  results |> list.length |> should.equal(size)
+})
+```
+
+---
+
+## Coverage Report Testing
+
+The coverage report module generates comprehensive test coverage analysis for rules and axioms.
+
+### Coverage Metrics
+
+| Metric | Description |
+|--------|-------------|
+| Rule Coverage | Percentage of rules tested |
+| Axiom Coverage | Percentage of axioms used |
+| Pass Rate | Validation success rate |
+| Grade | Letter grade (A-F) based on coverage |
+
+### Coverage Output Formats
+
+| Format | Function | Use Case |
+|--------|----------|----------|
+| Markdown | `format_markdown` | Documentation |
+| HTML | `format_html` | Web display |
+| JSON | `format_json` | API/tooling integration |
+
+### Example: Generate Coverage Report
+
+```gleam
+import modal_logic/testing/docs/coverage_report
+
+let store = rule_store.standard_store()
+let test_result = philosophical_tester.run_tests(store, philosophical_tester.default_config())
+let config = coverage_report.default_config()
+
+let report = coverage_report.generate_report(store, test_result, config)
+
+// Output in different formats
+let markdown = coverage_report.format_markdown(report)
+let html = coverage_report.format_html(report)
+let json = coverage_report.format_json(report)
+
+// Check coverage threshold
+let meets = coverage_report.meets_threshold(report, 0.8)
+let grade = coverage_report.coverage_grade(report)
+let summary = coverage_report.summary_string(report)
+```
+
+---
+
+## External Dataset Testing
+
+### FOLIO Adapter
+
+Tests the First-Order Logic for Natural Language Inference dataset integration.
+
+```gleam
+import modal_logic/testing/external/folio_adapter
+
+let config = folio_adapter.default_config()
+let fixtures = folio_adapter.get_all_fixtures(config)
+
+// Filter by entailment type
+let config_entail = folio_adapter.entailment_config()
+let entailment_fixtures = folio_adapter.get_all_fixtures(config_entail)
+```
+
+### LogiQA Adapter
+
+Tests the LogiQA 2.0 logical reasoning dataset integration.
+
+```gleam
+import modal_logic/testing/external/logiqa_adapter
+
+let examples = logiqa_adapter.extended_logiqa_examples()
+let config = logiqa_adapter.default_config()
+let fixtures = logiqa_adapter.get_all_fixtures(config)
+
+// Filter by reasoning type
+let categorical_config = logiqa_adapter.categorical_config()
+let categorical_fixtures = logiqa_adapter.get_all_fixtures(categorical_config)
+```
+
+### Dataset Statistics
+
+```gleam
+let stats = logiqa_adapter.dataset_statistics()
+io.println("Total examples: " <> int.to_string(stats.total_examples))
+io.println("Total pairs: " <> int.to_string(stats.total_pairs))
+```
 
 ---
 
