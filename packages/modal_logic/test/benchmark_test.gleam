@@ -56,7 +56,10 @@ pub fn benchmark_modus_ponens_application_test() {
 pub fn benchmark_pattern_matching_complex_test() {
   // Create a deeply nested pattern
   let pattern =
-    PatternNecessary(PatternImplies(PatternNecessary(AnyAtom("p")), AnyAtom("q")))
+    PatternNecessary(PatternImplies(
+      PatternNecessary(AnyAtom("p")),
+      AnyAtom("q"),
+    ))
 
   // Create matching proposition
   let prop = Necessary(Implies(Necessary(Atom("premise")), Atom("conclusion")))

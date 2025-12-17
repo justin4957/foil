@@ -34,9 +34,7 @@ pub fn custom_rule_building_test() {
   let assert Ok(ds) =
     rule_builder.inference_rule("disjunctive_syllogism")
     |> rule_builder.named("Disjunctive Syllogism")
-    |> rule_builder.described(
-      "From (P v Q) and ~P, derive Q",
-    )
+    |> rule_builder.described("From (P v Q) and ~P, derive Q")
     |> rule_builder.with_premise(rule_builder.or(
       rule_builder.atom("p"),
       rule_builder.atom("q"),
@@ -106,17 +104,20 @@ pub fn rule_store_lifecycle_test() {
   retrieved.name |> should.equal("Modus Ponens")
 
   // 4. Update rule
-  let updated_mp = InferenceRule(
-    ..mp,
-    metadata: inference_rule.RuleMetadata(
-      ..mp.metadata,
-      author: Some("Updated"),
-    ),
-  )
-  let assert Ok(store) = rule_store.update_rule(store, updated_mp, Some("Test update"))
+  let updated_mp =
+    InferenceRule(
+      ..mp,
+      metadata: inference_rule.RuleMetadata(
+        ..mp.metadata,
+        author: Some("Updated"),
+      ),
+    )
+  let assert Ok(store) =
+    rule_store.update_rule(store, updated_mp, Some("Test update"))
 
   // 5. Verify version
-  let assert Ok(versioned) = rule_store.get_versioned_rule(store, "modus_ponens")
+  let assert Ok(versioned) =
+    rule_store.get_versioned_rule(store, "modus_ponens")
   versioned.version |> should.equal(2)
 
   // 6. Delete rule
@@ -149,16 +150,19 @@ pub fn rule_sets_management_test() {
   let store = rule_store.standard_store()
 
   // Create rule set
-  let assert Ok(store) = rule_store.create_rule_set(
-    store,
-    "propositional",
-    "Propositional Rules",
-    "Classical propositional logic rules",
-  )
+  let assert Ok(store) =
+    rule_store.create_rule_set(
+      store,
+      "propositional",
+      "Propositional Rules",
+      "Classical propositional logic rules",
+    )
 
   // Add rules to set
-  let assert Ok(store) = rule_store.add_rule_to_set(store, "propositional", "modus_ponens")
-  let assert Ok(store) = rule_store.add_rule_to_set(store, "propositional", "modus_tollens")
+  let assert Ok(store) =
+    rule_store.add_rule_to_set(store, "propositional", "modus_ponens")
+  let assert Ok(store) =
+    rule_store.add_rule_to_set(store, "propositional", "modus_tollens")
 
   // Verify set
   let assert Ok(rule_set) = rule_store.get_rule_set(store, "propositional")
@@ -346,11 +350,12 @@ pub fn validation_pipeline_test() {
 /// Test validation with specific logic system filter
 pub fn validation_system_filter_test() {
   let store = rule_store.standard_store()
-  let config = philosophical_tester.PhilosophicalTestConfig(
-    ..philosophical_tester.default_config(),
-    systems: Some([S5]),
-    max_arguments: Some(5),
-  )
+  let config =
+    philosophical_tester.PhilosophicalTestConfig(
+      ..philosophical_tester.default_config(),
+      systems: Some([S5]),
+      max_arguments: Some(5),
+    )
 
   let result = philosophical_tester.run_tests(store, config)
 
@@ -364,11 +369,12 @@ pub fn validation_system_filter_test() {
 /// Test validation with category filter
 pub fn validation_category_filter_test() {
   let store = rule_store.standard_store()
-  let config = philosophical_tester.PhilosophicalTestConfig(
-    ..philosophical_tester.default_config(),
-    categories: Some([argument_corpus.Modal]),
-    max_arguments: Some(5),
-  )
+  let config =
+    philosophical_tester.PhilosophicalTestConfig(
+      ..philosophical_tester.default_config(),
+      categories: Some([argument_corpus.Modal]),
+      max_arguments: Some(5),
+    )
 
   let result = philosophical_tester.run_tests(store, config)
 
@@ -427,10 +433,11 @@ pub fn doc_from_store_test() {
 /// Test documentation generation from test results
 pub fn doc_from_test_results_test() {
   let store = rule_store.standard_store()
-  let test_config = philosophical_tester.PhilosophicalTestConfig(
-    ..philosophical_tester.default_config(),
-    max_arguments: Some(3),
-  )
+  let test_config =
+    philosophical_tester.PhilosophicalTestConfig(
+      ..philosophical_tester.default_config(),
+      max_arguments: Some(3),
+    )
   let test_result = philosophical_tester.run_tests(store, test_config)
 
   let doc_config = doc_generator.default_config()
@@ -471,14 +478,16 @@ pub fn doc_json_output_test() {
 /// Test coverage report generation
 pub fn coverage_report_pipeline_test() {
   let store = rule_store.standard_store()
-  let test_config = philosophical_tester.PhilosophicalTestConfig(
-    ..philosophical_tester.default_config(),
-    max_arguments: Some(5),
-  )
+  let test_config =
+    philosophical_tester.PhilosophicalTestConfig(
+      ..philosophical_tester.default_config(),
+      max_arguments: Some(5),
+    )
   let test_result = philosophical_tester.run_tests(store, test_config)
 
   let coverage_config = coverage_report.default_config()
-  let report = coverage_report.generate_report(store, test_result, coverage_config)
+  let report =
+    coverage_report.generate_report(store, test_result, coverage_config)
 
   // Should have coverage data
   { report.summary.total_rules > 0 } |> should.be_true
@@ -541,10 +550,11 @@ pub fn complete_pipeline_test() {
   let assert Ok(store) = rule_store.add_axiom(store, axiom.t_axiom())
 
   // 3. Run validation tests
-  let test_config = philosophical_tester.PhilosophicalTestConfig(
-    ..philosophical_tester.default_config(),
-    max_arguments: Some(3),
-  )
+  let test_config =
+    philosophical_tester.PhilosophicalTestConfig(
+      ..philosophical_tester.default_config(),
+      max_arguments: Some(3),
+    )
   let test_result = philosophical_tester.run_tests(store, test_config)
 
   // 4. Check soundness
@@ -554,11 +564,13 @@ pub fn complete_pipeline_test() {
   let doc_config = doc_generator.default_config()
   let doc = doc_generator.generate_store_doc(store, doc_config)
   let test_doc = doc_generator.generate_test_doc(test_result, doc_config)
-  let soundness_doc = doc_generator.generate_soundness_doc(soundness_result, doc_config)
+  let soundness_doc =
+    doc_generator.generate_soundness_doc(soundness_result, doc_config)
 
   // 6. Generate coverage report
   let coverage_config = coverage_report.default_config()
-  let coverage = coverage_report.generate_report(store, test_result, coverage_config)
+  let coverage =
+    coverage_report.generate_report(store, test_result, coverage_config)
 
   // Verify all components produced valid output
   { test_result.total_tested >= 0 } |> should.be_true
