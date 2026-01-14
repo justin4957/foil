@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 env:
   GLEAM_VERSION: '1.13.0'
   OTP_VERSION: '27.2'
