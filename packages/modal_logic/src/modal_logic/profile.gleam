@@ -25,7 +25,6 @@
 import gleam/dict.{type Dict}
 import gleam/list
 import gleam/string
-import simplifile
 
 /// Modal system profile configuration
 pub type Profile {
@@ -69,15 +68,7 @@ pub fn load(name: String) -> Result(Profile, ProfileError) {
 
   case list.contains(available_profiles, normalized_name) {
     False -> Error(ProfileNotFound(name))
-    True -> {
-      let file_path = profiles_dir <> "/" <> normalized_name <> ".json"
-
-      case simplifile.read(file_path) {
-        Error(_) ->
-          Error(ProfileIOError(name, "Failed to read profile file"))
-        Ok(content) -> parse_profile(name, content)
-      }
-    }
+    True -> parse_profile(normalized_name, "")
   }
 }
 
