@@ -1,0 +1,31 @@
+{
+  "name": "KD45",
+  "description": "Deontic S5 with serial, transitive, and Euclidean accessibility relation",
+  "axioms": ["K", "D", "4", "5"],
+  "frame_properties": ["serial", "transitive", "euclidean"],
+  "default_timeout_ms": 60000,
+  "verification_strategy": "standard_translation",
+  "examples": [
+    {
+      "description": "Seriality with introspection",
+      "formula": "(□p → ◇p) ∧ (□p → □□p)",
+      "expected": "valid"
+    },
+    {
+      "description": "Positive introspection for obligations",
+      "formula": "Obligatory(p) → Obligatory(Obligatory(p))",
+      "expected": "valid"
+    },
+    {
+      "description": "Negative introspection for obligations",
+      "formula": "¬Obligatory(p) → Obligatory(¬Obligatory(p))",
+      "expected": "valid"
+    }
+  ],
+  "use_cases": [
+    "Advanced deontic reasoning",
+    "Consistent normative systems with introspection",
+    "Moral philosophy with self-awareness",
+    "Legal systems with precedent"
+  ]
+}

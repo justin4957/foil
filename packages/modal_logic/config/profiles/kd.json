@@ -1,0 +1,31 @@
+{
+  "name": "KD",
+  "description": "Deontic logic with serial accessibility relation, extends K with axiom D",
+  "axioms": ["K", "D"],
+  "frame_properties": ["serial"],
+  "default_timeout_ms": 60000,
+  "verification_strategy": "standard_translation",
+  "examples": [
+    {
+      "description": "Seriality axiom (consistency)",
+      "formula": "□p → ◇p",
+      "expected": "valid"
+    },
+    {
+      "description": "Obligation implies permission",
+      "formula": "Obligatory(p) → Permitted(p)",
+      "expected": "valid"
+    },
+    {
+      "description": "No contradictory obligations",
+      "formula": "¬(Obligatory(p) ∧ Obligatory(¬p))",
+      "expected": "valid"
+    }
+  ],
+  "use_cases": [
+    "Deontic logic (obligation and permission)",
+    "Moral reasoning",
+    "Legal reasoning",
+    "Normative systems"
+  ]
+}

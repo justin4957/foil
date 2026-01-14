@@ -1,0 +1,25 @@
+{
+  "name": "K",
+  "description": "Basic modal logic system with minimal constraints on accessibility relations",
+  "axioms": ["K"],
+  "frame_properties": [],
+  "default_timeout_ms": 60000,
+  "verification_strategy": "standard_translation",
+  "examples": [
+    {
+      "description": "Distribution axiom",
+      "formula": "□(p → q) → (□p → □q)",
+      "expected": "valid"
+    },
+    {
+      "description": "Reflexivity is not valid in K",
+      "formula": "□p → p",
+      "expected": "invalid"
+    }
+  ],
+  "use_cases": [
+    "Basic modal reasoning",
+    "Minimal logical assumptions",
+    "Foundation for other modal systems"
+  ]
+}

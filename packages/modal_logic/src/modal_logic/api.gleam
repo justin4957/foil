@@ -23,6 +23,7 @@
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
+import modal_logic/profile
 
 // =============================================================================
 // Types
@@ -371,6 +372,19 @@ fn default_routes(config: ApiConfig) -> List(Route) {
       handler: handle_list_logic_systems,
       description: "List available logic systems",
     ),
+    // Profiles
+    Route(
+      method: Get,
+      pattern: base <> "/profiles",
+      handler: handle_list_profiles,
+      description: "List all available modal system profiles",
+    ),
+    Route(
+      method: Get,
+      pattern: base <> "/profiles/:name",
+      handler: handle_get_profile,
+      description: "Get a specific modal system profile by name",
+    ),
   ]
 }
 
@@ -586,6 +600,75 @@ fn handle_list_logic_systems(_request: Request) -> Response {
     <> "  ]\n"
     <> "}"
   json_response(200, response_body)
+}
+
+fn handle_list_profiles(_request: Request) -> Response {
+  let profiles = profile.list_all()
+  let profile_list =
+    profiles
+    |> list.map(fn(name) { "\"" <> name <> "\"" })
+    |> string.join(", ")
+
+  let response_body =
+    "{\n"
+    <> "  \"profiles\": [" <> profile_list <> "],\n"
+    <> "  \"count\": " <> string.inspect(list.length(profiles)) <> "\n"
+    <> "}"
+  json_response(200, response_body)
+}
+
+fn handle_get_profile(request: Request) -> Response {
+  case list.key_find(request.params, "name") {
+    Error(_) -> error_response(400, "missing_parameter", "Profile name is required")
+    Ok(name) ->
+      case profile.load(name) {
+        Error(err) -> {
+          let message = profile.format_error(err)
+          error_response(404, "profile_not_found", message)
+        }
+        Ok(p) -> {
+          let examples_json = format_profile_examples(p.examples)
+          let use_cases_json =
+            p.use_cases
+            |> list.map(fn(uc) { "\"" <> uc <> "\"" })
+            |> string.join(", ")
+
+          let response_body =
+            "{\n"
+            <> "  \"name\": \"" <> p.name <> "\",\n"
+            <> "  \"description\": \"" <> p.description <> "\",\n"
+            <> "  \"axioms\": [" <> format_string_list(p.axioms) <> "],\n"
+            <> "  \"frame_properties\": [" <> format_string_list(p.frame_properties) <> "],\n"
+            <> "  \"default_timeout_ms\": " <> string.inspect(p.default_timeout_ms) <> ",\n"
+            <> "  \"verification_strategy\": \"" <> p.verification_strategy <> "\",\n"
+            <> "  \"examples\": " <> examples_json <> ",\n"
+            <> "  \"use_cases\": [" <> use_cases_json <> "]\n"
+            <> "}"
+          json_response(200, response_body)
+        }
+      }
+  }
+}
+
+fn format_string_list(items: List(String)) -> String {
+  items
+  |> list.map(fn(item) { "\"" <> item <> "\"" })
+  |> string.join(", ")
+}
+
+fn format_profile_examples(examples: List(profile.ProfileExample)) -> String {
+  let examples_json =
+    examples
+    |> list.map(fn(ex) {
+      "{\n"
+      <> "      \"description\": \"" <> ex.description <> "\",\n"
+      <> "      \"formula\": \"" <> ex.formula <> "\",\n"
+      <> "      \"expected\": \"" <> ex.expected <> "\"\n"
+      <> "    }"
+    })
+    |> string.join(",\n    ")
+
+  "[\n    " <> examples_json <> "\n  ]"
 }
 
 // =============================================================================
