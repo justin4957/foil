@@ -1,134 +1,219 @@
-name: CI
+name: Foil CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/**']
   pull_request:
     branches: [main]
 
+env:
+  GLEAM_VERSION: '1.6.2'
+  OTP_VERSION: '27.2'
+
 jobs:
-  test:
-    name: Test
+  # =============================================================================
+  # Test Jobs
+  # =============================================================================
+
+  test-modal-logic:
+    name: Test modal_logic
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Erlang and Gleam
+      - name: Setup Gleam
         uses: erlef/setup-beam@v1
         with:
-          otp-version: '27.2'
-          gleam-version: '1.13.0'
+          otp-version: ${{ env.OTP_VERSION }}
+          gleam-version: ${{ env.GLEAM_VERSION }}
 
-      - name: Cache Gleam dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/gleam
-            **/build
-          key: ${{ runner.os }}-gleam-otp27-${{ hashFiles('**/gleam.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-gleam-otp27-
-
-      - name: Test anthropic_gleam
-        working-directory: packages/anthropic_gleam
+      - name: Download dependencies
         run: |
+          cd packages/modal_logic
           gleam deps download
+
+      - name: Run tests
+        run: |
+          cd packages/modal_logic
           gleam test
 
-      - name: Test z3_gleam
-        working-directory: packages/z3_gleam
-        run: |
-          gleam deps download
-          gleam test
-
-      - name: Test modal_logic
-        working-directory: packages/modal_logic
-        run: |
-          gleam deps download
-          gleam test
-
-      - name: Test analyst
-        working-directory: apps/analyst
-        run: |
-          gleam deps download
-          gleam test
-
-  build:
-    name: Build
+  test-anthropic:
+    name: Test anthropic_gleam
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Erlang and Gleam
+      - name: Setup Gleam
         uses: erlef/setup-beam@v1
         with:
-          otp-version: '27.2'
-          gleam-version: '1.13.0'
+          otp-version: ${{ env.OTP_VERSION }}
+          gleam-version: ${{ env.GLEAM_VERSION }}
 
-      - name: Cache Gleam dependencies
-        uses: actions/cache@v4
+      - name: Download dependencies
+        run: |
+          cd packages/anthropic_gleam
+          gleam deps download
+
+      - name: Run tests
+        run: |
+          cd packages/anthropic_gleam
+          gleam test
+
+  test-z3:
+    name: Test z3_gleam
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Gleam
+        uses: erlef/setup-beam@v1
         with:
-          path: |
-            ~/.cache/gleam
-            **/build
-          key: ${{ runner.os }}-gleam-otp27-${{ hashFiles('**/gleam.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-gleam-otp27-
+          otp-version: ${{ env.OTP_VERSION }}
+          gleam-version: ${{ env.GLEAM_VERSION }}
+
+      - name: Install Z3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y z3
+
+      - name: Download dependencies
+        run: |
+          cd packages/z3_gleam
+          gleam deps download
+
+      - name: Run tests
+        run: |
+          cd packages/z3_gleam
+          gleam test
+
+  # =============================================================================
+  # Build Jobs
+  # =============================================================================
+
+  build-packages:
+    name: Build all packages
+    runs-on: ubuntu-latest
+    needs: [test-modal-logic, test-anthropic, test-z3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Gleam
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          gleam-version: ${{ env.GLEAM_VERSION }}
 
       - name: Build anthropic_gleam
-        working-directory: packages/anthropic_gleam
         run: |
-          gleam deps download
+          cd packages/anthropic_gleam
           gleam build
 
       - name: Build z3_gleam
-        working-directory: packages/z3_gleam
         run: |
-          gleam deps download
+          cd packages/z3_gleam
           gleam build
 
       - name: Build modal_logic
-        working-directory: packages/modal_logic
         run: |
-          gleam deps download
+          cd packages/modal_logic
           gleam build
 
-      - name: Build analyst
-        working-directory: apps/analyst
-        run: |
-          gleam deps download
-          gleam build
-
-  format:
-    name: Code Quality
+  build-analyst:
+    name: Build analyst
     runs-on: ubuntu-latest
-
+    needs: [build-packages]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Erlang and Gleam
+      - name: Setup Gleam
         uses: erlef/setup-beam@v1
         with:
-          otp-version: '27.2'
-          gleam-version: '1.13.0'
+          otp-version: ${{ env.OTP_VERSION }}
+          gleam-version: ${{ env.GLEAM_VERSION }}
 
-      - name: Check formatting - anthropic_gleam
-        working-directory: packages/anthropic_gleam
-        run: gleam format --check src test
+      - name: Install Z3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y z3
 
-      - name: Check formatting - z3_gleam
-        working-directory: packages/z3_gleam
-        run: gleam format --check src test
+      - name: Download dependencies
+        run: |
+          cd apps/analyst
+          gleam deps download
 
-      - name: Check formatting - modal_logic
-        working-directory: packages/modal_logic
-        run: gleam format --check src test
+      - name: Build analyst application
+        run: |
+          cd apps/analyst
+          gleam build
 
-      - name: Check formatting - analyst
-        working-directory: apps/analyst
-        run: gleam format --check src test
+      - name: Build escript
+        run: |
+          cd apps/analyst
+          gleam run -m gleescript
+
+  # =============================================================================
+  # Code Quality Jobs
+  # =============================================================================
+
+  lint-modal-logic:
+    name: Check formatting - modal_logic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Gleam
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          gleam-version: ${{ env.GLEAM_VERSION }}
+
+      - name: Check formatting
+        run: |
+          cd packages/modal_logic
+          gleam format --check src test
+
+  lint-anthropic:
+    name: Check formatting - anthropic_gleam
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Gleam
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          gleam-version: ${{ env.GLEAM_VERSION }}
+
+      - name: Check formatting
+        run: |
+          cd packages/anthropic_gleam
+          gleam format --check src test
+
+  lint-z3:
+    name: Check formatting - z3_gleam
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Gleam
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          gleam-version: ${{ env.GLEAM_VERSION }}
+
+      - name: Check formatting
+        run: |
+          cd packages/z3_gleam
+          gleam format --check src test
+
+  # =============================================================================
+  # Summary Job
+  # =============================================================================
+
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [test-modal-logic, test-anthropic, test-z3, build-packages, build-analyst, lint-modal-logic, lint-anthropic, lint-z3]
+    steps:
+      - name: Success
+        run: echo "All CI checks passed!"

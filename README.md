@@ -1,6 +1,8 @@
 # Modal Logic Engine
 
-[![Build Status](https://github.com/justin4957/foil/actions/workflows/ci.yml/badge.svg)](https://github.com/justin4957/foil/actions)
+[![Build Status](https://github.com/justin4957/foil/actions/workflows/ci.yml/badge.svg)](https://github.com/justin4957/foil/actions/workflows/ci.yml)
+[![Coverage](https://github.com/justin4957/foil/actions/workflows/coverage.yml/badge.svg)](https://github.com/justin4957/foil/actions/workflows/coverage.yml)
+[![Performance](https://github.com/justin4957/foil/actions/workflows/performance.yml/badge.svg)](https://github.com/justin4957/foil/actions/workflows/performance.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ![AI Thinking](https://media.giphy.com/media/KVVgWtScb37USleUB3/giphy.gif)
