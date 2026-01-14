@@ -42,11 +42,7 @@ pub type Profile {
 
 /// Example formula for a profile
 pub type ProfileExample {
-  ProfileExample(
-    description: String,
-    formula: String,
-    expected: String,
-  )
+  ProfileExample(description: String, formula: String, expected: String)
 }
 
 /// Profile loading errors
@@ -75,86 +71,103 @@ pub fn load(name: String) -> Result(Profile, ProfileError) {
 /// Parse profile JSON content
 /// Note: Simplified implementation - returns profile with name only
 /// Full JSON parsing to be implemented with proper decoder library
-fn parse_profile(name: String, _content: String) -> Result(Profile, ProfileError) {
+fn parse_profile(
+  name: String,
+  _content: String,
+) -> Result(Profile, ProfileError) {
   // Simplified implementation: create profile based on name
   case string.lowercase(name) {
     "k" ->
-      Ok(Profile(
-        name: "K",
-        description: "Basic modal logic system",
-        axioms: ["K"],
-        frame_properties: [],
-        default_timeout_ms: 60000,
-        verification_strategy: "standard_translation",
-        examples: [],
-        use_cases: ["Basic modal reasoning"],
-      ))
+      Ok(
+        Profile(
+          name: "K",
+          description: "Basic modal logic system",
+          axioms: ["K"],
+          frame_properties: [],
+          default_timeout_ms: 60_000,
+          verification_strategy: "standard_translation",
+          examples: [],
+          use_cases: ["Basic modal reasoning"],
+        ),
+      )
     "t" ->
-      Ok(Profile(
-        name: "T",
-        description: "Modal logic with reflexive frames",
-        axioms: ["K", "T"],
-        frame_properties: ["reflexive"],
-        default_timeout_ms: 60000,
-        verification_strategy: "standard_translation",
-        examples: [],
-        use_cases: ["Alethic necessity"],
-      ))
+      Ok(
+        Profile(
+          name: "T",
+          description: "Modal logic with reflexive frames",
+          axioms: ["K", "T"],
+          frame_properties: ["reflexive"],
+          default_timeout_ms: 60_000,
+          verification_strategy: "standard_translation",
+          examples: [],
+          use_cases: ["Alethic necessity"],
+        ),
+      )
     "k4" ->
-      Ok(Profile(
-        name: "K4",
-        description: "Modal logic with transitive frames",
-        axioms: ["K", "4"],
-        frame_properties: ["transitive"],
-        default_timeout_ms: 60000,
-        verification_strategy: "standard_translation",
-        examples: [],
-        use_cases: ["Provability logic"],
-      ))
+      Ok(
+        Profile(
+          name: "K4",
+          description: "Modal logic with transitive frames",
+          axioms: ["K", "4"],
+          frame_properties: ["transitive"],
+          default_timeout_ms: 60_000,
+          verification_strategy: "standard_translation",
+          examples: [],
+          use_cases: ["Provability logic"],
+        ),
+      )
     "s4" ->
-      Ok(Profile(
-        name: "S4",
-        description: "Modal logic with reflexive and transitive frames",
-        axioms: ["K", "T", "4"],
-        frame_properties: ["reflexive", "transitive"],
-        default_timeout_ms: 60000,
-        verification_strategy: "standard_translation",
-        examples: [],
-        use_cases: ["Epistemic logic"],
-      ))
+      Ok(
+        Profile(
+          name: "S4",
+          description: "Modal logic with reflexive and transitive frames",
+          axioms: ["K", "T", "4"],
+          frame_properties: ["reflexive", "transitive"],
+          default_timeout_ms: 60_000,
+          verification_strategy: "standard_translation",
+          examples: [],
+          use_cases: ["Epistemic logic"],
+        ),
+      )
     "s5" ->
-      Ok(Profile(
-        name: "S5",
-        description: "Modal logic with equivalence relation",
-        axioms: ["K", "T", "4", "5"],
-        frame_properties: ["reflexive", "symmetric", "transitive"],
-        default_timeout_ms: 60000,
-        verification_strategy: "standard_translation",
-        examples: [],
-        use_cases: ["Metaphysical necessity"],
-      ))
+      Ok(
+        Profile(
+          name: "S5",
+          description: "Modal logic with equivalence relation",
+          axioms: ["K", "T", "4", "5"],
+          frame_properties: ["reflexive", "symmetric", "transitive"],
+          default_timeout_ms: 60_000,
+          verification_strategy: "standard_translation",
+          examples: [],
+          use_cases: ["Metaphysical necessity"],
+        ),
+      )
     "kd" ->
-      Ok(Profile(
-        name: "KD",
-        description: "Deontic logic with serial frames",
-        axioms: ["K", "D"],
-        frame_properties: ["serial"],
-        default_timeout_ms: 60000,
-        verification_strategy: "standard_translation",
-        examples: [],
-        use_cases: ["Deontic logic"],
-      ))
+      Ok(
+        Profile(
+          name: "KD",
+          description: "Deontic logic with serial frames",
+          axioms: ["K", "D"],
+          frame_properties: ["serial"],
+          default_timeout_ms: 60_000,
+          verification_strategy: "standard_translation",
+          examples: [],
+          use_cases: ["Deontic logic"],
+        ),
+      )
     "kd45" ->
-      Ok(Profile(
-        name: "KD45",
-        description: "Deontic S5",
-        axioms: ["K", "D", "4", "5"],
-        frame_properties: ["serial", "transitive", "euclidean"],
-        default_timeout_ms: 60000,
-        verification_strategy: "standard_translation",
-        examples: [],
-        use_cases: ["Advanced deontic reasoning"],
-      ))
+      Ok(
+        Profile(
+          name: "KD45",
+          description: "Deontic S5",
+          axioms: ["K", "D", "4", "5"],
+          frame_properties: ["serial", "transitive", "euclidean"],
+          default_timeout_ms: 60_000,
+          verification_strategy: "standard_translation",
+          examples: [],
+          use_cases: ["Advanced deontic reasoning"],
+        ),
+      )
     _ -> Error(ProfileNotFound(name))
   }
 }
@@ -194,7 +207,10 @@ pub fn exists(name: String) -> Bool {
 pub fn format_error(error: ProfileError) -> String {
   case error {
     ProfileNotFound(name) ->
-      "Profile '" <> name <> "' not found. Available profiles: " <> string.join(available_profiles, ", ")
+      "Profile '"
+      <> name
+      <> "' not found. Available profiles: "
+      <> string.join(available_profiles, ", ")
 
     ProfileParseError(name, details) ->
       "Failed to parse profile '" <> name <> "': " <> details

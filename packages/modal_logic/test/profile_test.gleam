@@ -23,7 +23,7 @@ pub fn load_k_profile_test() {
       p.name |> should.equal("K")
       p.axioms |> should.equal(["K"])
       p.frame_properties |> should.equal([])
-      p.default_timeout_ms |> should.equal(60000)
+      p.default_timeout_ms |> should.equal(60_000)
       p.verification_strategy |> should.equal("standard_translation")
     }
     Error(err) -> {
@@ -61,7 +61,8 @@ pub fn load_s5_profile_test() {
     Ok(p) -> {
       p.name |> should.equal("S5")
       p.axioms |> should.equal(["K", "T", "4", "5"])
-      p.frame_properties |> should.equal(["reflexive", "symmetric", "transitive"])
+      p.frame_properties
+      |> should.equal(["reflexive", "symmetric", "transitive"])
     }
     Error(_) -> should.fail()
   }

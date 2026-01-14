@@ -611,15 +611,20 @@ fn handle_list_profiles(_request: Request) -> Response {
 
   let response_body =
     "{\n"
-    <> "  \"profiles\": [" <> profile_list <> "],\n"
-    <> "  \"count\": " <> string.inspect(list.length(profiles)) <> "\n"
+    <> "  \"profiles\": ["
+    <> profile_list
+    <> "],\n"
+    <> "  \"count\": "
+    <> string.inspect(list.length(profiles))
+    <> "\n"
     <> "}"
   json_response(200, response_body)
 }
 
 fn handle_get_profile(request: Request) -> Response {
   case list.key_find(request.params, "name") {
-    Error(_) -> error_response(400, "missing_parameter", "Profile name is required")
+    Error(_) ->
+      error_response(400, "missing_parameter", "Profile name is required")
     Ok(name) ->
       case profile.load(name) {
         Error(err) -> {
@@ -635,14 +640,30 @@ fn handle_get_profile(request: Request) -> Response {
 
           let response_body =
             "{\n"
-            <> "  \"name\": \"" <> p.name <> "\",\n"
-            <> "  \"description\": \"" <> p.description <> "\",\n"
-            <> "  \"axioms\": [" <> format_string_list(p.axioms) <> "],\n"
-            <> "  \"frame_properties\": [" <> format_string_list(p.frame_properties) <> "],\n"
-            <> "  \"default_timeout_ms\": " <> string.inspect(p.default_timeout_ms) <> ",\n"
-            <> "  \"verification_strategy\": \"" <> p.verification_strategy <> "\",\n"
-            <> "  \"examples\": " <> examples_json <> ",\n"
-            <> "  \"use_cases\": [" <> use_cases_json <> "]\n"
+            <> "  \"name\": \""
+            <> p.name
+            <> "\",\n"
+            <> "  \"description\": \""
+            <> p.description
+            <> "\",\n"
+            <> "  \"axioms\": ["
+            <> format_string_list(p.axioms)
+            <> "],\n"
+            <> "  \"frame_properties\": ["
+            <> format_string_list(p.frame_properties)
+            <> "],\n"
+            <> "  \"default_timeout_ms\": "
+            <> string.inspect(p.default_timeout_ms)
+            <> ",\n"
+            <> "  \"verification_strategy\": \""
+            <> p.verification_strategy
+            <> "\",\n"
+            <> "  \"examples\": "
+            <> examples_json
+            <> ",\n"
+            <> "  \"use_cases\": ["
+            <> use_cases_json
+            <> "]\n"
             <> "}"
           json_response(200, response_body)
         }
@@ -661,9 +682,15 @@ fn format_profile_examples(examples: List(profile.ProfileExample)) -> String {
     examples
     |> list.map(fn(ex) {
       "{\n"
-      <> "      \"description\": \"" <> ex.description <> "\",\n"
-      <> "      \"formula\": \"" <> ex.formula <> "\",\n"
-      <> "      \"expected\": \"" <> ex.expected <> "\"\n"
+      <> "      \"description\": \""
+      <> ex.description
+      <> "\",\n"
+      <> "      \"formula\": \""
+      <> ex.formula
+      <> "\",\n"
+      <> "      \"expected\": \""
+      <> ex.expected
+      <> "\"\n"
       <> "    }"
     })
     |> string.join(",\n    ")
