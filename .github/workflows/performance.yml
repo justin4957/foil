@@ -10,7 +10,7 @@ on:
     - cron: '0 0 * * 1'
 
 env:
-  GLEAM_VERSION: '1.6.2'
+  GLEAM_VERSION: '1.13.0'
   OTP_VERSION: '27.2'
 
 jobs:
