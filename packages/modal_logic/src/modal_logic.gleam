@@ -32,6 +32,8 @@
 
 import modal_logic/argument
 import modal_logic/compiler
+import modal_logic/error
+import modal_logic/logger
 import modal_logic/logic_detector
 import modal_logic/prompts
 import modal_logic/proposition
@@ -93,3 +95,14 @@ pub type TranslationResult =
 
 pub type TranslationError =
   translation_service.TranslationError
+
+// Re-export error types
+pub type FoilError =
+  error.FoilError
+
+// Re-export logger types
+pub type LogLevel =
+  logger.LogLevel
+
+pub type LoggerConfig =
+  logger.LoggerConfig
