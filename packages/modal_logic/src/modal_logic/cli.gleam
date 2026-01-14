@@ -109,6 +109,9 @@ pub type Command {
   ExampleCommand(system: Option(LogicSystem))
   ListProfilesCommand
   ProfileInfoCommand(name: String)
+  ListPatternsCommand
+  PatternsByCategoryCommand(category: String)
+  PatternSearchCommand(query: String)
 }
 
 /// Argument input for analysis
@@ -167,6 +170,11 @@ pub fn parse_args_with_config(
     ["systems"] -> ParseSuccess(ListSystemsCommand, config)
     ["profiles"] -> ParseSuccess(ListProfilesCommand, config)
     ["profile", name] -> ParseSuccess(ProfileInfoCommand(name), config)
+    ["patterns"] -> ParseSuccess(ListPatternsCommand, config)
+    ["patterns", "category", category] ->
+      ParseSuccess(PatternsByCategoryCommand(category), config)
+    ["patterns", "search", query] ->
+      ParseSuccess(PatternSearchCommand(query), config)
     ["example"] -> ParseSuccess(ExampleCommand(None), config)
     ["example", system] ->
       case parse_logic_system(system) {
