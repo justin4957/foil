@@ -1,0 +1,25 @@
+{
+  "name": "K4",
+  "description": "Modal logic with transitive accessibility relation, extends K with axiom 4",
+  "axioms": ["K", "4"],
+  "frame_properties": ["transitive"],
+  "default_timeout_ms": 60000,
+  "verification_strategy": "standard_translation",
+  "examples": [
+    {
+      "description": "Transitivity axiom",
+      "formula": "□p → □□p",
+      "expected": "valid"
+    },
+    {
+      "description": "Possibility of possibility",
+      "formula": "◇◇p → ◇p",
+      "expected": "valid"
+    }
+  ],
+  "use_cases": [
+    "Provability logic",
+    "Temporal reasoning",
+    "Knowledge without reflexivity"
+  ]
+}

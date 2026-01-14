@@ -6,6 +6,7 @@
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
+import modal_logic/profile
 import modal_logic/proposition.{
   type LogicSystem, type Proposition, And, Atom, Believes, Implies, K, K4, KD,
   KD45, Knows, Necessary, Not, Obligatory, Or, Permitted, Possible, S4, S5, T,
@@ -106,6 +107,8 @@ pub type Command {
   ExportCommand(format: ExportFormat, output_path: String)
   ListSystemsCommand
   ExampleCommand(system: Option(LogicSystem))
+  ListProfilesCommand
+  ProfileInfoCommand(name: String)
 }
 
 /// Argument input for analysis
@@ -162,6 +165,8 @@ pub fn parse_args_with_config(
     ["interactive"] -> ParseSuccess(InteractiveCommand, config)
     ["-i"] -> ParseSuccess(InteractiveCommand, config)
     ["systems"] -> ParseSuccess(ListSystemsCommand, config)
+    ["profiles"] -> ParseSuccess(ListProfilesCommand, config)
+    ["profile", name] -> ParseSuccess(ProfileInfoCommand(name), config)
     ["example"] -> ParseSuccess(ExampleCommand(None), config)
     ["example", system] ->
       case parse_logic_system(system) {
@@ -198,7 +203,9 @@ fn parse_analyze_command(args: List(String), config: CliConfig) -> ParseResult {
     [] ->
       ParseError(
         "Missing argument text",
-        Some("Usage: analyze <text> [--system K|T|S4|S5]"),
+        Some(
+          "Usage: analyze <text> [--system K|T|S4|S5] [--profile k|t|s4|s5|kd|kd45|k4]",
+        ),
       )
     ["-"] -> ParseSuccess(AnalyzeCommand(StdinInput(None)), config)
     ["--file", path] ->
@@ -208,16 +215,36 @@ fn parse_analyze_command(args: List(String), config: CliConfig) -> ParseResult {
         Ok(s) -> ParseSuccess(AnalyzeCommand(FileInput(path, Some(s))), config)
         Error(msg) -> ParseError(msg, None)
       }
+    ["--file", path, "--profile", profile_name] ->
+      case load_profile_system(profile_name) {
+        Ok(s) -> ParseSuccess(AnalyzeCommand(FileInput(path, Some(s))), config)
+        Error(msg) ->
+          ParseError(
+            msg,
+            Some("Available profiles: k, t, k4, s4, s5, kd, kd45"),
+          )
+      }
     [text] -> ParseSuccess(AnalyzeCommand(TextInput(text, None)), config)
     [text, "--system", system] ->
       case parse_logic_system(system) {
         Ok(s) -> ParseSuccess(AnalyzeCommand(TextInput(text, Some(s))), config)
         Error(msg) -> ParseError(msg, None)
       }
+    [text, "--profile", profile_name] ->
+      case load_profile_system(profile_name) {
+        Ok(s) -> ParseSuccess(AnalyzeCommand(TextInput(text, Some(s))), config)
+        Error(msg) ->
+          ParseError(
+            msg,
+            Some("Available profiles: k, t, k4, s5, kd, kd45, k4"),
+          )
+      }
     _ ->
       ParseError(
         "Invalid analyze arguments",
-        Some("Usage: analyze <text> [--system K|T|S4|S5]"),
+        Some(
+          "Usage: analyze <text> [--system K|T|S4|S5] [--profile k|t|s4|s5|kd|kd45|k4]",
+        ),
       )
   }
 }
@@ -278,6 +305,28 @@ fn parse_logic_system(s: String) -> Result(LogicSystem, String) {
     "S4" -> Ok(S4)
     "S5" -> Ok(S5)
     _ -> Error("Unknown logic system: " <> s <> ". Valid: K, T, S4, S5")
+  }
+}
+
+fn load_profile_system(profile_name: String) -> Result(LogicSystem, String) {
+  case profile.load(profile_name) {
+    Error(err) -> Error(profile.format_error(err))
+    Ok(p) -> {
+      // Map profile name to logic system
+      case string.lowercase(p.name) {
+        "k" -> Ok(K)
+        "t" -> Ok(T)
+        "k4" -> Ok(K4)
+        "s4" -> Ok(S4)
+        "s5" -> Ok(S5)
+        "kd" -> Ok(KD)
+        "kd45" -> Ok(KD45)
+        _ ->
+          Error(
+            "Profile '" <> p.name <> "' does not map to a known logic system",
+          )
+      }
+    }
   }
 }
 

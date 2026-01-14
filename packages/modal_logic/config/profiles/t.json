@@ -1,0 +1,25 @@
+{
+  "name": "T",
+  "description": "Modal logic with reflexive accessibility relation, extends K with axiom T",
+  "axioms": ["K", "T"],
+  "frame_properties": ["reflexive"],
+  "default_timeout_ms": 60000,
+  "verification_strategy": "standard_translation",
+  "examples": [
+    {
+      "description": "Reflexivity axiom",
+      "formula": "□p → p",
+      "expected": "valid"
+    },
+    {
+      "description": "Necessity implies possibility",
+      "formula": "□p → ◇p",
+      "expected": "valid"
+    }
+  ],
+  "use_cases": [
+    "Alethic necessity (truth in actual world)",
+    "Logical necessity",
+    "Normative reasoning"
+  ]
+}

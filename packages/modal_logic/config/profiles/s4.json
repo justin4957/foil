@@ -1,0 +1,26 @@
+{
+  "name": "S4",
+  "description": "Modal logic with reflexive and transitive accessibility relation, combines T and 4",
+  "axioms": ["K", "T", "4"],
+  "frame_properties": ["reflexive", "transitive"],
+  "default_timeout_ms": 60000,
+  "verification_strategy": "standard_translation",
+  "examples": [
+    {
+      "description": "Reflexivity and transitivity",
+      "formula": "(□p → p) ∧ (□p → □□p)",
+      "expected": "valid"
+    },
+    {
+      "description": "Knowledge closure",
+      "formula": "□(p → q) → (□p → □q)",
+      "expected": "valid"
+    }
+  ],
+  "use_cases": [
+    "Epistemic logic (knowledge)",
+    "Provability with reflexivity",
+    "Temporal logic with past and future",
+    "Intuitionistic modal logic"
+  ]
+}
