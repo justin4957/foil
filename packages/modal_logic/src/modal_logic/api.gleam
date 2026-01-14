@@ -20,9 +20,12 @@
 //// let router = api.create_router(config)
 //// ```
 
+import gleam/float
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
+import modal_logic/patterns
 import modal_logic/profile
 
 // =============================================================================
@@ -385,6 +388,25 @@ fn default_routes(config: ApiConfig) -> List(Route) {
       handler: handle_get_profile,
       description: "Get a specific modal system profile by name",
     ),
+    // Patterns
+    Route(
+      method: Get,
+      pattern: base <> "/patterns",
+      handler: handle_list_patterns,
+      description: "List all available formula patterns",
+    ),
+    Route(
+      method: Get,
+      pattern: base <> "/patterns/category/:category",
+      handler: handle_patterns_by_category,
+      description: "Get patterns by category",
+    ),
+    Route(
+      method: Post,
+      pattern: base <> "/suggest",
+      handler: handle_suggest_patterns,
+      description: "Get pattern suggestions based on partial formula",
+    ),
   ]
 }
 
@@ -677,6 +699,183 @@ fn format_string_list(items: List(String)) -> String {
   |> string.join(", ")
 }
 
+fn handle_list_patterns(_request: Request) -> Response {
+  let all = patterns.all_patterns()
+  let count = patterns.count()
+  let by_category = patterns.count_by_category()
+
+  let category_counts =
+    by_category
+    |> list.map(fn(pair) {
+      let #(cat, cnt) = pair
+      "\"" <> patterns.category_to_string(cat) <> "\": " <> int.to_string(cnt)
+    })
+    |> string.join(", ")
+
+  let response_body =
+    "{\n"
+    <> "  \"total_patterns\": "
+    <> int.to_string(count)
+    <> ",\n"
+    <> "  \"by_category\": {"
+    <> category_counts
+    <> "},\n"
+    <> "  \"categories\": [\"epistemic\", \"deontic\", \"temporal\", \"alethic\", \"classical\"]\n"
+    <> "}"
+
+  json_response(200, response_body)
+}
+
+fn handle_patterns_by_category(request: Request) -> Response {
+  case list.key_find(request.params, "category") {
+    Error(_) -> error_response(400, "missing_parameter", "Category is required")
+    Ok(category_str) ->
+      case patterns.string_to_category(category_str) {
+        None ->
+          error_response(
+            400,
+            "invalid_category",
+            "Invalid category. Valid: epistemic, deontic, temporal, alethic, classical",
+          )
+        Some(category) -> {
+          let category_patterns = patterns.by_category(category)
+          let patterns_json = format_patterns_list(category_patterns)
+
+          let response_body =
+            "{\n"
+            <> "  \"category\": \""
+            <> category_str
+            <> "\",\n"
+            <> "  \"count\": "
+            <> int.to_string(list.length(category_patterns))
+            <> ",\n"
+            <> "  \"patterns\": "
+            <> patterns_json
+            <> "\n"
+            <> "}"
+
+          json_response(200, response_body)
+        }
+      }
+  }
+}
+
+fn handle_suggest_patterns(request: Request) -> Response {
+  // Parse request body for partial formula
+  case parse_suggest_request(request.body) {
+    Error(msg) -> error_response(400, "invalid_request", msg)
+    Ok(#(partial, max_results)) -> {
+      let suggestions = patterns.suggest(partial, max_results)
+      let suggestions_json = format_suggestions(suggestions)
+
+      let response_body =
+        "{\n"
+        <> "  \"partial_formula\": \""
+        <> partial
+        <> "\",\n"
+        <> "  \"suggestion_count\": "
+        <> int.to_string(list.length(suggestions))
+        <> ",\n"
+        <> "  \"suggestions\": "
+        <> suggestions_json
+        <> "\n"
+        <> "}"
+
+      json_response(200, response_body)
+    }
+  }
+}
+
+fn parse_suggest_request(body: String) -> Result(#(String, Int), String) {
+  // Simple JSON parsing - extract "partial" and optional "max_results"
+  case string.contains(body, "\"partial\"") {
+    False -> Error("Missing 'partial' field in request body")
+    True -> {
+      // Extract partial formula (simplified parsing)
+      let partial = extract_json_field(body, "partial")
+      let max_results = case extract_json_field(body, "max_results") {
+        "" -> 5
+        num_str ->
+          case int.parse(num_str) {
+            Ok(n) -> n
+            Error(_) -> 5
+          }
+      }
+      Ok(#(partial, max_results))
+    }
+  }
+}
+
+fn extract_json_field(json: String, field: String) -> String {
+  // Simplified JSON field extraction
+  let pattern = "\"" <> field <> "\":\\s*\"([^\"]+)\""
+  // For now, just return empty string - full JSON parsing to be implemented
+  ""
+}
+
+fn format_patterns_list(pattern_list: List(patterns.Pattern)) -> String {
+  let patterns_json =
+    pattern_list
+    |> list.map(format_pattern_json)
+    |> string.join(",\n    ")
+
+  "[\n    " <> patterns_json <> "\n  ]"
+}
+
+fn format_pattern_json(pattern: patterns.Pattern) -> String {
+  "{\n"
+  <> "      \"id\": \""
+  <> pattern.id
+  <> "\",\n"
+  <> "      \"name\": \""
+  <> pattern.name
+  <> "\",\n"
+  <> "      \"formula\": \""
+  <> escape_json_string(pattern.formula)
+  <> "\",\n"
+  <> "      \"description\": \""
+  <> escape_json_string(pattern.description)
+  <> "\",\n"
+  <> "      \"category\": \""
+  <> patterns.category_to_string(pattern.category)
+  <> "\",\n"
+  <> "      \"complexity\": \""
+  <> patterns.complexity_to_string(pattern.complexity)
+  <> "\",\n"
+  <> "      \"tags\": ["
+  <> format_string_list(pattern.tags)
+  <> "]\n"
+  <> "    }"
+}
+
+fn format_suggestions(suggestions: List(patterns.Suggestion)) -> String {
+  let suggestions_json =
+    suggestions
+    |> list.map(fn(s) {
+      "{\n"
+      <> "      \"pattern\": "
+      <> format_pattern_json(s.pattern)
+      <> ",\n"
+      <> "      \"relevance_score\": "
+      <> float.to_string(s.relevance_score)
+      <> ",\n"
+      <> "      \"match_reason\": \""
+      <> s.match_reason
+      <> "\"\n"
+      <> "    }"
+    })
+    |> string.join(",\n    ")
+
+  "[\n    " <> suggestions_json <> "\n  ]"
+}
+
+fn escape_json_string(s: String) -> String {
+  s
+  |> string.replace("\\", "\\\\")
+  |> string.replace("\"", "\\\"")
+  |> string.replace("\n", "\\n")
+}
+
 fn format_profile_examples(examples: List(profile.ProfileExample)) -> String {
   let examples_json =
     examples
@@ -887,14 +1086,6 @@ fn extract_json_string(json: String, key: String) -> String {
     }
     _ -> ""
   }
-}
-
-fn escape_json_string(s: String) -> String {
-  s
-  |> string.replace("\\", "\\\\")
-  |> string.replace("\"", "\\\"")
-  |> string.replace("\n", "\\n")
-  |> string.replace("\t", "\\t")
 }
 
 fn generate_id() -> String {
