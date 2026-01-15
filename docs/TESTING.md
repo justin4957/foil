@@ -49,6 +49,35 @@ gleam test
 - Proposition construction
 - Type conversions
 - JSON serialization
+- Proof tree construction and traversal
+- Debugger session management
+- Visualization configuration
+
+**Proof Visualization Tests:**
+```gleam
+// Test proof tree creation
+pub fn proof_tree_valid_construction_test() {
+  let premises = [Atom("p"), Implies(Atom("p"), Atom("q"))]
+  let conclusion = Atom("q")
+  let tree = proof_tree.valid_proof(K, premises, conclusion, [])
+  tree.metadata.is_valid |> should.equal(True)
+}
+
+// Test debugger stepping
+pub fn debugger_step_forward_test() {
+  let tree = proof_tree.valid_proof(K, [Atom("p")], Atom("q"), [])
+  let session = debugger.new_session(tree)
+  let result = debugger.step_forward(session)
+  result.session.current_step |> should.equal(1)
+}
+
+// Test D3.js visualization generation
+pub fn proof_visualization_to_d3_test() {
+  let tree = proof_tree.valid_proof(K, [Atom("p")], Atom("q"), [])
+  let js = proof_visualization.proof_tree_to_d3(tree, default_config())
+  string.contains(js, "d3.select") |> should.equal(True)
+}
+```
 
 **Running Tests:**
 ```bash
