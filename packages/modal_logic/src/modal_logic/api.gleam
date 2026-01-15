@@ -20,14 +20,17 @@
 //// let router = api.create_router(config)
 //// ```
 
+import gleam/dict
 import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
+import modal_logic/batch
 import modal_logic/dataset_templates
 import modal_logic/patterns
 import modal_logic/profile
+import modal_logic/proposition.{K, S4, S5, T}
 
 // =============================================================================
 // Types
@@ -420,6 +423,19 @@ fn default_routes(config: ApiConfig) -> List(Route) {
       pattern: base <> "/datasets/:dataset/templates",
       handler: handle_dataset_templates,
       description: "Get templates for a specific dataset",
+    ),
+    // Batch Operations
+    Route(
+      method: Post,
+      pattern: base <> "/batch/verify",
+      handler: handle_batch_verify,
+      description: "Verify multiple formulas across systems in batch",
+    ),
+    Route(
+      method: Post,
+      pattern: base <> "/compare/systems",
+      handler: handle_compare_systems,
+      description: "Compare a single formula across multiple systems",
     ),
   ]
 }
@@ -1013,6 +1029,72 @@ fn format_profile_examples(examples: List(profile.ProfileExample)) -> String {
     |> string.join(",\n    ")
 
   "[\n    " <> examples_json <> "\n  ]"
+}
+
+fn handle_batch_verify(_request: Request) -> Response {
+  // Simplified implementation - returns sample batch result
+  let sample_result = batch.default_batch_request()
+  let result = batch.verify_batch(sample_result)
+
+  let response_body =
+    "{\n"
+    <> "  \"message\": \"Batch verification endpoint (simplified implementation)\",\n"
+    <> "  \"summary\": {\n"
+    <> "    \"total_formulas\": "
+    <> int.to_string(result.summary.total_formulas)
+    <> ",\n"
+    <> "    \"total_verifications\": "
+    <> int.to_string(result.summary.total_verifications)
+    <> ",\n"
+    <> "    \"valid_count\": "
+    <> int.to_string(result.summary.valid_count)
+    <> ",\n"
+    <> "    \"invalid_count\": "
+    <> int.to_string(result.summary.invalid_count)
+    <> "\n"
+    <> "  },\n"
+    <> "  \"note\": \"Full batch verification with request body parsing to be implemented\"\n"
+    <> "}"
+
+  json_response(200, response_body)
+}
+
+fn handle_compare_systems(_request: Request) -> Response {
+  // Simplified implementation - returns sample comparison
+  let sample_request =
+    batch.ComparisonRequest(
+      formula: "□p → p",
+      systems: [K, T, S4, S5],
+      timeout_ms: 60_000,
+    )
+
+  let result = batch.compare_systems(sample_request)
+
+  let consensus_str = case result.consensus {
+    Some(batch.AllValid) -> "all_valid"
+    Some(batch.AllInvalid) -> "all_invalid"
+    Some(batch.Mixed(_, _)) -> "mixed"
+    None -> "unknown"
+  }
+
+  let response_body =
+    "{\n"
+    <> "  \"formula\": \""
+    <> result.formula
+    <> "\",\n"
+    <> "  \"systems_compared\": "
+    <> int.to_string(dict.size(result.results_by_system))
+    <> ",\n"
+    <> "  \"consensus\": \""
+    <> consensus_str
+    <> "\",\n"
+    <> "  \"differences_found\": "
+    <> int.to_string(list.length(result.differences))
+    <> ",\n"
+    <> "  \"note\": \"Full comparison with request body parsing to be implemented\"\n"
+    <> "}"
+
+  json_response(200, response_body)
 }
 
 // =============================================================================
