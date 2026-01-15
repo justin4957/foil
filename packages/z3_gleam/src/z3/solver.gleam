@@ -235,26 +235,141 @@ pub fn reset(solver: Solver) -> Result(Solver, Z3Error) {
   Ok(Solver(..solver, assertions: [], named_assertions: dict.new(), scopes: []))
 }
 
-/// Check satisfiability of current assertions
-/// This is a placeholder that returns Unknown until the port driver is connected
+/// Check satisfiability of current assertions (in-memory placeholder)
+/// This is a lightweight check that doesn't require Z3.
+/// For actual Z3 solving, use check_with_z3() or the port_solver module.
 pub fn check(solver: Solver) -> Result(#(Solver, SolverCheckResult), Z3Error) {
-  // For now, this is a placeholder implementation
-  // In a full implementation, this would call the port driver
-  // and compile expressions to Z3 format
+  // This is a placeholder implementation for in-memory operation.
+  // For real Z3 solving, use check_with_z3() which connects to the port driver.
   case list.length(solver.assertions) {
     0 ->
       // Empty solver is trivially satisfiable
       Ok(#(solver, SolverSat(SolverModel(values: dict.new()))))
     _ ->
-      // Return Unknown since we don't have the actual Z3 backend connected
+      // Return Unknown since this is the lightweight in-memory solver
+      // Use check_with_z3() for actual Z3 backend calls
       Ok(#(
         solver,
         SolverUnknown(
-          "Z3 backend not connected - this is a placeholder implementation",
+          "In-memory solver - use check_with_z3() or port_solver module for real Z3 solving",
         ),
       ))
   }
 }
+
+/// Check satisfiability using the Z3 backend via port driver
+/// This function connects to the actual Z3 solver through the Python port driver.
+/// The solver state is preserved and the Z3 connection is closed after the check.
+///
+/// ## Example
+/// ```gleam
+/// let assert Ok(s) = solver.new()
+/// let x = expr.int_const("x")
+/// let assert Ok(s) = solver.assert_(s, expr.gt(x, expr.int(0)))
+/// let assert Ok(s) = solver.assert_(s, expr.lt(x, expr.int(10)))
+///
+/// case solver.check_with_z3(s) {
+///   Ok(#(s, SolverSat(model))) -> io.println("SAT!")
+///   Ok(#(s, SolverUnsat)) -> io.println("UNSAT")
+///   Ok(#(s, SolverUnknown(reason))) -> io.println("Unknown: " <> reason)
+///   Error(e) -> io.println("Error connecting to Z3")
+/// }
+/// ```
+pub fn check_with_z3(
+  solver: Solver,
+) -> Result(#(Solver, SolverCheckResult), Z3Error) {
+  // Handle empty solver case directly
+  case list.length(solver.assertions) {
+    0 -> Ok(#(solver, SolverSat(SolverModel(values: dict.new()))))
+    _ -> do_check_with_z3(solver)
+  }
+}
+
+/// Internal function that performs the actual Z3 check via port driver
+fn do_check_with_z3(
+  solver: Solver,
+) -> Result(#(Solver, SolverCheckResult), Z3Error) {
+  // Import port driver functions
+  // Start the port driver
+  case start_port_driver() {
+    Error(e) -> Error(e)
+    Ok(port_handle) -> {
+      // Create Z3 context and solver
+      case create_z3_context_and_solver(port_handle) {
+        Error(e) -> {
+          stop_port_driver(port_handle)
+          Error(e)
+        }
+        Ok(#(port_handle, _ctx_handle, solver_handle)) -> {
+          // Assert all expressions
+          case
+            assert_expressions_to_z3(
+              port_handle,
+              solver_handle,
+              solver.assertions,
+            )
+          {
+            Error(e) -> {
+              stop_port_driver(port_handle)
+              Error(e)
+            }
+            Ok(port_handle) -> {
+              // Check satisfiability
+              case run_z3_check(port_handle, solver_handle) {
+                Error(e) -> {
+                  stop_port_driver(port_handle)
+                  Error(e)
+                }
+                Ok(#(port_handle, check_result)) -> {
+                  // Convert result and clean up
+                  stop_port_driver(port_handle)
+                  Ok(#(solver, check_result))
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// =============================================================================
+// Port Driver Integration (Internal)
+// =============================================================================
+
+/// Port handle type (opaque wrapper for driver handle)
+type PortDriverHandle
+
+/// Context handle type
+type Z3ContextHandle
+
+/// Solver handle type for Z3
+type Z3SolverHandle
+
+@external(erlang, "z3_solver_ffi", "start_port")
+fn start_port_driver() -> Result(PortDriverHandle, Z3Error)
+
+@external(erlang, "z3_solver_ffi", "stop_port")
+fn stop_port_driver(handle: PortDriverHandle) -> Nil
+
+@external(erlang, "z3_solver_ffi", "create_context_and_solver")
+fn create_z3_context_and_solver(
+  handle: PortDriverHandle,
+) -> Result(#(PortDriverHandle, Z3ContextHandle, Z3SolverHandle), Z3Error)
+
+@external(erlang, "z3_solver_ffi", "assert_expressions")
+fn assert_expressions_to_z3(
+  handle: PortDriverHandle,
+  solver: Z3SolverHandle,
+  exprs: List(Expr),
+) -> Result(PortDriverHandle, Z3Error)
+
+@external(erlang, "z3_solver_ffi", "check_sat")
+fn run_z3_check(
+  handle: PortDriverHandle,
+  solver: Z3SolverHandle,
+) -> Result(#(PortDriverHandle, SolverCheckResult), Z3Error)
 
 /// Check satisfiability and get a model if satisfiable
 pub fn check_sat(
