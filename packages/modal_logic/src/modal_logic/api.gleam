@@ -27,10 +27,11 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
 import modal_logic/batch
+import modal_logic/complexity
 import modal_logic/dataset_templates
 import modal_logic/patterns
 import modal_logic/profile
-import modal_logic/proposition.{K, S4, S5, T}
+import modal_logic/proposition.{type Proposition, Atom, K, Necessary, S4, S5, T}
 
 // =============================================================================
 // Types
@@ -436,6 +437,13 @@ fn default_routes(config: ApiConfig) -> List(Route) {
       pattern: base <> "/compare/systems",
       handler: handle_compare_systems,
       description: "Compare a single formula across multiple systems",
+    ),
+    // Complexity Analysis
+    Route(
+      method: Post,
+      pattern: base <> "/analyze/complexity",
+      handler: handle_analyze_complexity,
+      description: "Analyze formula complexity and get optimization suggestions",
     ),
   ]
 }
@@ -1092,6 +1100,70 @@ fn handle_compare_systems(_request: Request) -> Response {
     <> int.to_string(list.length(result.differences))
     <> ",\n"
     <> "  \"note\": \"Full comparison with request body parsing to be implemented\"\n"
+    <> "}"
+
+  json_response(200, response_body)
+}
+
+fn handle_analyze_complexity(_request: Request) -> Response {
+  // Simplified implementation - analyze sample formula
+  let sample_formula = Necessary(Atom("p"))
+  let analysis = complexity.analyze(sample_formula)
+
+  let optimizations_json =
+    analysis.optimizations
+    |> list.map(fn(opt) {
+      "{\n"
+      <> "      \"type\": \""
+      <> complexity.optimization_type_name(opt.suggestion_type)
+      <> "\",\n"
+      <> "      \"description\": \""
+      <> opt.description
+      <> "\",\n"
+      <> "      \"original\": \""
+      <> opt.original
+      <> "\",\n"
+      <> "      \"optimized\": \""
+      <> opt.optimized
+      <> "\"\n"
+      <> "    }"
+    })
+    |> string.join(",\n    ")
+
+  let optimizations_array = case list.length(analysis.optimizations) {
+    0 -> "[]"
+    _ -> "[\n    " <> optimizations_json <> "\n  ]"
+  }
+
+  let response_body =
+    "{\n"
+    <> "  \"formula\": \""
+    <> analysis.formula
+    <> "\",\n"
+    <> "  \"metrics\": {\n"
+    <> "    \"modal_depth\": "
+    <> int.to_string(analysis.metrics.modal_depth)
+    <> ",\n"
+    <> "    \"operator_count\": "
+    <> int.to_string(analysis.metrics.operator_count)
+    <> ",\n"
+    <> "    \"complexity_score\": "
+    <> float.to_string(analysis.metrics.complexity_score)
+    <> ",\n"
+    <> "    \"estimated_verification_ms\": "
+    <> int.to_string(analysis.metrics.estimated_verification_ms)
+    <> "\n"
+    <> "  },\n"
+    <> "  \"complexity_level\": \""
+    <> complexity.complexity_level_name(analysis.complexity_level)
+    <> "\",\n"
+    <> "  \"optimizations\": "
+    <> optimizations_array
+    <> ",\n"
+    <> "  \"warnings_count\": "
+    <> int.to_string(list.length(analysis.warnings))
+    <> ",\n"
+    <> "  \"note\": \"Full complexity analysis with request body parsing to be implemented\"\n"
     <> "}"
 
   json_response(200, response_body)
