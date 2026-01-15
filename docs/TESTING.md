@@ -79,6 +79,63 @@ pub fn proof_visualization_to_d3_test() {
 }
 ```
 
+**Plugin System Tests:**
+```gleam
+// Test plugin registration
+pub fn registry_register_plugin_test() {
+  let config = plugin.default_registry_config()
+  let registry = plugin.new_registry(config)
+  let test_plugin = create_test_plugin("test_1")
+
+  case plugin.register_plugin(registry, test_plugin) {
+    Ok(updated_registry) -> {
+      plugin.list_plugins(updated_registry) |> list.length |> should.equal(1)
+    }
+    Error(_) -> should.fail()
+  }
+}
+
+// Test plugin loading
+pub fn loader_load_plugin_test() {
+  let registry = plugin.new_registry(plugin.default_registry_config())
+  let test_plugin = create_test_plugin("loadable")
+
+  case plugin.register_plugin(registry, test_plugin) {
+    Ok(updated_registry) -> {
+      let loader = plugin.new_loader(updated_registry, plugin.default_loader_config())
+      case plugin.load_plugin(loader, "loadable") {
+        Ok(updated_loader) -> {
+          // Plugin should now be active
+        }
+        Error(_) -> should.fail()
+      }
+    }
+    Error(_) -> should.fail()
+  }
+}
+
+// Test temporal logic plugins
+pub fn ltl_plugin_creation_test() {
+  let ltl = temporal.ltl_plugin()
+  ltl.metadata.id |> should.equal("temporal_ltl")
+  ltl.logic.operators |> list.length |> should.equal(6)
+}
+
+// Test version management
+pub fn version_satisfies_caret_test() {
+  plugin.version_satisfies("1.2.3", "^1.2.3") |> should.be_true
+  plugin.version_satisfies("1.9.0", "^1.2.3") |> should.be_true
+  plugin.version_satisfies("2.0.0", "^1.2.3") |> should.be_false
+}
+
+// Test security sandbox
+pub fn sandbox_operation_allowed_test() {
+  let config = plugin.default_sandbox_config()
+  let sandbox = plugin.new_sandbox(config)
+  plugin.is_operation_allowed(sandbox, OpEvaluate) |> should.be_true
+}
+```
+
 **Running Tests:**
 ```bash
 cd packages/modal_logic
