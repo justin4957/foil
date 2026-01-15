@@ -12,6 +12,7 @@ import gleam/string
 import z3/compiler
 import z3/expr
 import z3/model
+import z3/port_solver
 import z3/solver
 import z3/types.{BoolLit, BoolVal, IntLit, IntVal}
 import z3/unsat_core
@@ -25,6 +26,7 @@ pub fn main() {
   test_model_evaluation()
   test_compilation_roundtrip()
   test_unsat_core_workflow()
+  test_port_solver_dialogue()
 
   io.println("\n=== All dialogue tests completed ===")
 }
@@ -364,5 +366,119 @@ fn print_core_expressions(exprs: List(#(String, types.Expr))) -> Nil {
       io.println("    - " <> name)
       print_core_expressions(rest)
     }
+  }
+}
+
+/// Test 6: Port Solver Dialogue (Real Z3 Integration)
+fn test_port_solver_dialogue() {
+  io.println("--- Test 6: Port Solver Dialogue (Real Z3) ---")
+  io.println("User: Create a port-connected solver to use real Z3")
+
+  case port_solver.new() {
+    Ok(ps) -> {
+      io.println("Z3: Port solver created, connected to Z3 backend")
+
+      io.println("\nUser: Assert constraints: x > 0 AND x < 10")
+      let x = expr.int_const("x")
+
+      case port_solver.assert_(ps, expr.gt(x, expr.int(0))) {
+        Ok(ps2) -> {
+          case port_solver.assert_(ps2, expr.lt(x, expr.int(10))) {
+            Ok(ps3) -> {
+              io.println("Z3: Constraints asserted to solver")
+              let assertions = port_solver.get_assertions(ps3)
+              io.println(
+                "Z3: Assertion count: " <> int_to_str(list_len(assertions)),
+              )
+
+              io.println("\nUser: Check satisfiability with real Z3")
+              case port_solver.check(ps3) {
+                Ok(#(ps4, result)) -> {
+                  case result {
+                    solver.SolverSat(_model) -> {
+                      io.println("Z3: Result = SAT")
+                      io.println("Z3: Found satisfying assignment (e.g., x=5)")
+                    }
+                    solver.SolverUnsat -> {
+                      io.println("Z3: Result = UNSAT")
+                    }
+                    solver.SolverUnknown(reason) -> {
+                      io.println("Z3: Result = Unknown")
+                      io.println("Z3: Reason: " <> reason)
+                    }
+                  }
+                  port_solver.close(ps4)
+                }
+                Error(e) -> {
+                  io.println("Z3: Check failed - " <> format_z3_error(e))
+                  port_solver.close(ps3)
+                }
+              }
+            }
+            Error(e) -> {
+              io.println("Z3: Assert failed - " <> format_z3_error(e))
+              port_solver.close(ps2)
+            }
+          }
+        }
+        Error(e) -> {
+          io.println("Z3: Assert failed - " <> format_z3_error(e))
+          port_solver.close(ps)
+        }
+      }
+    }
+    Error(e) -> {
+      io.println("Z3: Port solver unavailable - " <> format_z3_error(e))
+      io.println("Z3: (Z3 Python bindings may not be installed)")
+      io.println("Z3: To install: pip install z3-solver")
+    }
+  }
+
+  io.println("\nUser: Test solver.check_with_z3() on standard solver")
+  case solver.new() {
+    Ok(s) -> {
+      let y = expr.int_const("y")
+      case
+        solver.assert_(
+          s,
+          expr.and_([expr.gt(y, expr.int(5)), expr.lt(y, expr.int(15))]),
+        )
+      {
+        Ok(s2) -> {
+          io.println("Z3: Standard solver with y > 5 AND y < 15")
+
+          case solver.check_with_z3(s2) {
+            Ok(#(_, result)) -> {
+              case result {
+                solver.SolverSat(_) ->
+                  io.println("Z3: check_with_z3() returned SAT")
+                solver.SolverUnsat ->
+                  io.println("Z3: check_with_z3() returned UNSAT")
+                solver.SolverUnknown(r) ->
+                  io.println("Z3: check_with_z3() returned Unknown - " <> r)
+              }
+            }
+            Error(e) -> {
+              io.println(
+                "Z3: check_with_z3() unavailable - " <> format_z3_error(e),
+              )
+            }
+          }
+        }
+        Error(_) -> io.println("Z3: Assert failed")
+      }
+    }
+    Error(_) -> io.println("Z3: Solver creation failed")
+  }
+
+  io.println("")
+}
+
+fn format_z3_error(e: types.Z3Error) -> String {
+  case e {
+    types.SolverError(msg) -> "SolverError: " <> msg
+    types.TimeoutError -> "TimeoutError"
+    types.PortError(msg) -> "PortError: " <> msg
+    types.ParseError(msg) -> "ParseError: " <> msg
   }
 }
