@@ -112,6 +112,8 @@ pub type Command {
   ListPatternsCommand
   PatternsByCategoryCommand(category: String)
   PatternSearchCommand(query: String)
+  ListDatasetTemplatesCommand
+  DatasetTemplatesCommand(dataset: String)
 }
 
 /// Argument input for analysis
@@ -175,6 +177,9 @@ pub fn parse_args_with_config(
       ParseSuccess(PatternsByCategoryCommand(category), config)
     ["patterns", "search", query] ->
       ParseSuccess(PatternSearchCommand(query), config)
+    ["datasets"] -> ParseSuccess(ListDatasetTemplatesCommand, config)
+    ["datasets", dataset] ->
+      ParseSuccess(DatasetTemplatesCommand(dataset), config)
     ["example"] -> ParseSuccess(ExampleCommand(None), config)
     ["example", system] ->
       case parse_logic_system(system) {
