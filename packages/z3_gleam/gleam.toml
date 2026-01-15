@@ -5,6 +5,14 @@ description = "Gleam bindings to Z3 theorem prover for SMT solving, constraint s
 licences = ["MIT"]
 repository = { type = "github", user = "justin4957", repo = "foil" }
 
+# Note: When published separately, update to:
+# repository = { type = "github", user = "justin4957", repo = "z3-gleam" }
+# links = [
+#   { title = "Documentation", href = "https://hexdocs.pm/z3_gleam" },
+#   { title = "Z3 Project", href = "https://github.com/Z3Prover/z3" },
+#   { title = "Sponsor", href = "https://github.com/sponsors/justin4957" }
+# ]
+
 [dependencies]
 gleam_stdlib = ">= 0.67.0 and < 2.0.0"
 gleam_json = ">= 3.0.0 and < 4.0.0"
