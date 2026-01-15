@@ -23,6 +23,7 @@
 //// let handler = websocket.create_handler(config)
 //// ```
 
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
@@ -95,6 +96,13 @@ pub type EventType {
   RepairSuggestion
   AnalysisComplete
   ErrorEvent
+  /// Debugger events
+  DebugSessionStarted
+  DebugStepExecuted
+  DebugBreakpointHit
+  DebugWatchUpdated
+  DebugStateChanged
+  DebugProofCompleted
 }
 
 /// Progress event
@@ -145,6 +153,20 @@ pub type ClientMessage {
   ClientPing
   /// Unknown message
   UnknownMessage(content: String)
+  /// Debugger: step forward
+  DebugStepForward(session_id: String)
+  /// Debugger: step backward
+  DebugStepBackward(session_id: String)
+  /// Debugger: go to step
+  DebugGoToStep(session_id: String, step: Int)
+  /// Debugger: add breakpoint
+  DebugAddBreakpoint(session_id: String, breakpoint_type: String, value: String)
+  /// Debugger: remove breakpoint
+  DebugRemoveBreakpoint(session_id: String, breakpoint_id: String)
+  /// Debugger: play
+  DebugPlay(session_id: String, speed: String)
+  /// Debugger: pause
+  DebugPause(session_id: String)
 }
 
 /// Server message (outgoing)
@@ -354,6 +376,99 @@ pub fn handle_message(
       #(updated, [ProgressMessage(event)])
     }
     ClientPing -> #(handler, [ServerPong])
+    // Debugger messages - these are handled by the debugger module
+    // The handler acknowledges receipt and returns appropriate events
+    DebugStepForward(session_id) -> {
+      let event =
+        ProgressEvent(
+          event_type: DebugStepExecuted,
+          request_id: session_id,
+          timestamp: get_timestamp(),
+          progress: 0,
+          message: "Step forward executed",
+          data: None,
+        )
+      let updated = add_event(handler, event)
+      #(updated, [ProgressMessage(event)])
+    }
+    DebugStepBackward(session_id) -> {
+      let event =
+        ProgressEvent(
+          event_type: DebugStepExecuted,
+          request_id: session_id,
+          timestamp: get_timestamp(),
+          progress: 0,
+          message: "Step backward executed",
+          data: None,
+        )
+      let updated = add_event(handler, event)
+      #(updated, [ProgressMessage(event)])
+    }
+    DebugGoToStep(session_id, step) -> {
+      let event =
+        ProgressEvent(
+          event_type: DebugStepExecuted,
+          request_id: session_id,
+          timestamp: get_timestamp(),
+          progress: step,
+          message: "Jumped to step " <> int.to_string(step),
+          data: None,
+        )
+      let updated = add_event(handler, event)
+      #(updated, [ProgressMessage(event)])
+    }
+    DebugAddBreakpoint(session_id, breakpoint_type, value) -> {
+      let event =
+        ProgressEvent(
+          event_type: DebugStateChanged,
+          request_id: session_id,
+          timestamp: get_timestamp(),
+          progress: 0,
+          message: "Breakpoint added: " <> breakpoint_type <> " = " <> value,
+          data: None,
+        )
+      let updated = add_event(handler, event)
+      #(updated, [ProgressMessage(event)])
+    }
+    DebugRemoveBreakpoint(session_id, breakpoint_id) -> {
+      let event =
+        ProgressEvent(
+          event_type: DebugStateChanged,
+          request_id: session_id,
+          timestamp: get_timestamp(),
+          progress: 0,
+          message: "Breakpoint removed: " <> breakpoint_id,
+          data: None,
+        )
+      let updated = add_event(handler, event)
+      #(updated, [ProgressMessage(event)])
+    }
+    DebugPlay(session_id, speed) -> {
+      let event =
+        ProgressEvent(
+          event_type: DebugStateChanged,
+          request_id: session_id,
+          timestamp: get_timestamp(),
+          progress: 0,
+          message: "Playback started at speed " <> speed,
+          data: None,
+        )
+      let updated = add_event(handler, event)
+      #(updated, [ProgressMessage(event)])
+    }
+    DebugPause(session_id) -> {
+      let event =
+        ProgressEvent(
+          event_type: DebugStateChanged,
+          request_id: session_id,
+          timestamp: get_timestamp(),
+          progress: 0,
+          message: "Playback paused",
+          data: None,
+        )
+      let updated = add_event(handler, event)
+      #(updated, [ProgressMessage(event)])
+    }
     UnknownMessage(_) -> #(handler, [
       ErrorMessage("unknown_message", "Unknown message type"),
     ])
@@ -607,7 +722,155 @@ fn event_type_to_string(event_type: EventType) -> String {
     RepairSuggestion -> "repair.suggestion"
     AnalysisComplete -> "analysis.complete"
     ErrorEvent -> "error"
+    DebugSessionStarted -> "debug.session.started"
+    DebugStepExecuted -> "debug.step.executed"
+    DebugBreakpointHit -> "debug.breakpoint.hit"
+    DebugWatchUpdated -> "debug.watch.updated"
+    DebugStateChanged -> "debug.state.changed"
+    DebugProofCompleted -> "debug.proof.completed"
   }
+}
+
+// =============================================================================
+// Debugger Event Creation
+// =============================================================================
+
+/// Create a debug session started event
+pub fn debug_session_started(
+  session_id: String,
+  total_steps: Int,
+  is_valid: Bool,
+) -> ProgressEvent {
+  ProgressEvent(
+    event_type: DebugSessionStarted,
+    request_id: session_id,
+    timestamp: get_timestamp(),
+    progress: 0,
+    message: "Debug session started",
+    data: Some(
+      "{\"totalSteps\": "
+      <> int_to_string(total_steps)
+      <> ", \"isValid\": "
+      <> bool_to_string(is_valid)
+      <> "}",
+    ),
+  )
+}
+
+/// Create a debug step executed event
+pub fn debug_step_executed(
+  session_id: String,
+  step_number: Int,
+  total_steps: Int,
+  action: String,
+  formula: String,
+  world: String,
+) -> ProgressEvent {
+  let progress = { step_number * 100 } / total_steps
+  ProgressEvent(
+    event_type: DebugStepExecuted,
+    request_id: session_id,
+    timestamp: get_timestamp(),
+    progress: progress,
+    message: "Step " <> int_to_string(step_number) <> ": " <> action,
+    data: Some(
+      "{\"stepNumber\": "
+      <> int_to_string(step_number)
+      <> ", \"totalSteps\": "
+      <> int_to_string(total_steps)
+      <> ", \"action\": \""
+      <> escape_json(action)
+      <> "\", \"formula\": \""
+      <> escape_json(formula)
+      <> "\", \"world\": \""
+      <> world
+      <> "\"}",
+    ),
+  )
+}
+
+/// Create a debug breakpoint hit event
+pub fn debug_breakpoint_hit(
+  session_id: String,
+  breakpoint_id: String,
+  step_number: Int,
+  reason: String,
+) -> ProgressEvent {
+  ProgressEvent(
+    event_type: DebugBreakpointHit,
+    request_id: session_id,
+    timestamp: get_timestamp(),
+    progress: 0,
+    message: "Breakpoint hit: " <> reason,
+    data: Some(
+      "{\"breakpointId\": \""
+      <> breakpoint_id
+      <> "\", \"stepNumber\": "
+      <> int_to_string(step_number)
+      <> ", \"reason\": \""
+      <> escape_json(reason)
+      <> "\"}",
+    ),
+  )
+}
+
+/// Create a debug state changed event
+pub fn debug_state_changed(
+  session_id: String,
+  worlds: List(String),
+  accessibility_count: Int,
+  open_branches: Int,
+) -> ProgressEvent {
+  let worlds_json =
+    "["
+    <> string.join(list.map(worlds, fn(w) { "\"" <> w <> "\"" }), ", ")
+    <> "]"
+  ProgressEvent(
+    event_type: DebugStateChanged,
+    request_id: session_id,
+    timestamp: get_timestamp(),
+    progress: 0,
+    message: "State changed: "
+      <> int_to_string(list.length(worlds))
+      <> " worlds",
+    data: Some(
+      "{\"worlds\": "
+      <> worlds_json
+      <> ", \"accessibilityCount\": "
+      <> int_to_string(accessibility_count)
+      <> ", \"openBranches\": "
+      <> int_to_string(open_branches)
+      <> "}",
+    ),
+  )
+}
+
+/// Create a debug proof completed event
+pub fn debug_proof_completed(
+  session_id: String,
+  is_valid: Bool,
+  total_steps: Int,
+  worlds_explored: Int,
+) -> ProgressEvent {
+  ProgressEvent(
+    event_type: DebugProofCompleted,
+    request_id: session_id,
+    timestamp: get_timestamp(),
+    progress: 100,
+    message: case is_valid {
+      True -> "Proof complete: Valid"
+      False -> "Proof complete: Invalid (countermodel found)"
+    },
+    data: Some(
+      "{\"isValid\": "
+      <> bool_to_string(is_valid)
+      <> ", \"totalSteps\": "
+      <> int_to_string(total_steps)
+      <> ", \"worldsExplored\": "
+      <> int_to_string(worlds_explored)
+      <> "}",
+    ),
+  )
 }
 
 // =============================================================================
