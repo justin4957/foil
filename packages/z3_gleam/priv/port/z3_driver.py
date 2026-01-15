@@ -33,7 +33,7 @@ try:
     from z3 import (
         Context, Solver, sat, unsat, unknown,
         Bool, Int, Real, BitVec,
-        And, Or, Not, Implies, Xor,
+        And, Or, Not, Implies, Xor, If,
         ForAll, Exists,
         IntSort, BoolSort, RealSort, BitVecSort,
         is_true, is_false, is_int_value, is_rational_value,
@@ -391,6 +391,13 @@ class Z3Driver:
 
             body = self._parse_expr(expr_json["body"], ctx, variables)
             return Exists(bound_vars, body)
+
+        # Conditional (if-then-else)
+        if expr_type == "ite":
+            cond = self._parse_expr(expr_json["condition"], ctx, variables)
+            then_branch = self._parse_expr(expr_json["then"], ctx, variables)
+            else_branch = self._parse_expr(expr_json["else"], ctx, variables)
+            return If(cond, then_branch, else_branch)
 
         raise ValueError(f"Unknown expression type: {expr_type}")
 
