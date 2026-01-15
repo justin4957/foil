@@ -25,6 +25,7 @@ import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
+import modal_logic/dataset_templates
 import modal_logic/patterns
 import modal_logic/profile
 
@@ -406,6 +407,19 @@ fn default_routes(config: ApiConfig) -> List(Route) {
       pattern: base <> "/suggest",
       handler: handle_suggest_patterns,
       description: "Get pattern suggestions based on partial formula",
+    ),
+    // Dataset Templates
+    Route(
+      method: Get,
+      pattern: base <> "/datasets/templates",
+      handler: handle_list_dataset_templates,
+      description: "List all dataset-specific templates",
+    ),
+    Route(
+      method: Get,
+      pattern: base <> "/datasets/:dataset/templates",
+      handler: handle_dataset_templates,
+      description: "Get templates for a specific dataset",
     ),
   ]
 }
@@ -874,6 +888,110 @@ fn escape_json_string(s: String) -> String {
   |> string.replace("\\", "\\\\")
   |> string.replace("\"", "\\\"")
   |> string.replace("\n", "\\n")
+}
+
+fn handle_list_dataset_templates(_request: Request) -> Response {
+  let all = dataset_templates.all_templates()
+  let count = dataset_templates.count()
+  let by_dataset = dataset_templates.count_by_dataset()
+
+  let dataset_counts =
+    by_dataset
+    |> list.map(fn(pair) {
+      let #(ds, cnt) = pair
+      "\""
+      <> dataset_templates.dataset_to_string(ds)
+      <> "\": "
+      <> int.to_string(cnt)
+    })
+    |> string.join(", ")
+
+  let response_body =
+    "{\n"
+    <> "  \"total_templates\": "
+    <> int.to_string(count)
+    <> ",\n"
+    <> "  \"by_dataset\": {"
+    <> dataset_counts
+    <> "},\n"
+    <> "  \"datasets\": [\"folio\", \"logiqa\", \"inpho\"]\n"
+    <> "}"
+
+  json_response(200, response_body)
+}
+
+fn handle_dataset_templates(request: Request) -> Response {
+  case list.key_find(request.params, "dataset") {
+    Error(_) ->
+      error_response(400, "missing_parameter", "Dataset name is required")
+    Ok(dataset_str) ->
+      case dataset_templates.string_to_dataset(dataset_str) {
+        None ->
+          error_response(
+            400,
+            "invalid_dataset",
+            "Invalid dataset. Valid: folio, logiqa, inpho",
+          )
+        Some(dataset) -> {
+          let templates = dataset_templates.by_dataset(dataset)
+          let templates_json = format_dataset_templates(templates)
+
+          let response_body =
+            "{\n"
+            <> "  \"dataset\": \""
+            <> dataset_str
+            <> "\",\n"
+            <> "  \"count\": "
+            <> int.to_string(list.length(templates))
+            <> ",\n"
+            <> "  \"templates\": "
+            <> templates_json
+            <> "\n"
+            <> "}"
+
+          json_response(200, response_body)
+        }
+      }
+  }
+}
+
+fn format_dataset_templates(
+  templates: List(dataset_templates.DatasetTemplate),
+) -> String {
+  let templates_json =
+    templates
+    |> list.map(format_dataset_template_json)
+    |> string.join(",\n    ")
+
+  "[\n    " <> templates_json <> "\n  ]"
+}
+
+fn format_dataset_template_json(
+  template: dataset_templates.DatasetTemplate,
+) -> String {
+  "{\n"
+  <> "      \"id\": \""
+  <> template.id
+  <> "\",\n"
+  <> "      \"name\": \""
+  <> template.name
+  <> "\",\n"
+  <> "      \"dataset\": \""
+  <> dataset_templates.dataset_to_string(template.dataset)
+  <> "\",\n"
+  <> "      \"template_type\": \""
+  <> dataset_templates.template_type_to_string(template.template_type)
+  <> "\",\n"
+  <> "      \"description\": \""
+  <> escape_json_string(template.description)
+  <> "\",\n"
+  <> "      \"logic_system\": \""
+  <> string.inspect(template.logic_system)
+  <> "\",\n"
+  <> "      \"pattern_description\": \""
+  <> escape_json_string(template.pattern_description)
+  <> "\"\n"
+  <> "    }"
 }
 
 fn format_profile_examples(examples: List(profile.ProfileExample)) -> String {
