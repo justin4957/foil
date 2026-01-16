@@ -44,6 +44,8 @@ pub type ValidationResult {
   Valid
   /// The argument is invalid with a countermodel
   Invalid(countermodel: String)
+  /// Validation result is unknown (e.g., Z3 unavailable, timeout, or incomplete)
+  Unknown(reason: String)
   /// Validation timed out before completion
   Timeout
   /// An error occurred during validation

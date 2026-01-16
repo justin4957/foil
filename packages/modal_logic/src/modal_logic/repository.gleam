@@ -452,6 +452,7 @@ pub fn serialize_validation_result(result: ValidationResult) -> String {
   case result {
     argument.Valid -> "valid"
     argument.Invalid(_) -> "invalid"
+    argument.Unknown(_) -> "unknown"
     argument.Timeout -> "timeout"
     argument.Error(_) -> "error"
   }

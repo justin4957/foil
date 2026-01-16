@@ -37,11 +37,14 @@ try:
         ForAll, Exists,
         IntSort, BoolSort, RealSort, BitVecSort,
         is_true, is_false, is_int_value, is_rational_value,
-        simplify
+        simplify,
+        get_version_string
     )
     Z3_AVAILABLE = True
+    Z3_VERSION = get_version_string()
 except ImportError:
     Z3_AVAILABLE = False
+    Z3_VERSION = None
 
 
 class Z3Driver:
@@ -422,18 +425,32 @@ class Z3Driver:
 def main():
     """Main entry point."""
     if not Z3_AVAILABLE:
-        # Send error and exit
+        # Send detailed error with installation instructions
         error_response = {
             "id": 0,
-            "error": "Z3 Python bindings not available. Install with: pip install z3-solver"
+            "error": "Z3 Python bindings not available",
+            "z3_available": False,
+            "install_instructions": {
+                "macos": "brew install z3 && pip3 install z3-solver",
+                "ubuntu": "apt install z3 && pip3 install z3-solver",
+                "windows": "pip install z3-solver",
+                "generic": "pip3 install z3-solver"
+            },
+            "message": "Z3 solver is required for modal logic validation. Please install Z3 to continue."
         }
         print(json.dumps(error_response), flush=True)
         sys.exit(1)
 
     driver = Z3Driver()
 
-    # Send ready signal
-    print(json.dumps({"ready": True, "version": "0.1.0"}), flush=True)
+    # Send ready signal with version information
+    print(json.dumps({
+        "ready": True,
+        "z3_available": True,
+        "z3_version": Z3_VERSION,
+        "driver_version": "0.2.0",
+        "python_version": sys.version.split()[0]
+    }), flush=True)
 
     # Main loop: read JSON commands, write JSON responses
     for line in sys.stdin:
