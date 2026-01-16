@@ -583,6 +583,248 @@ pub fn explain_countermodel(countermodel: Countermodel) -> String {
   intro <> actual_desc <> relations_desc <> conclusion
 }
 
+/// Generate a detailed modal logic explanation for the countermodel
+///
+/// This explains how the countermodel works in terms of modal semantics:
+/// - Which propositions are necessarily true (□p) - true in all accessible worlds
+/// - Which propositions are possibly true (◇p) - true in at least one accessible world
+/// - Why the specific world configuration invalidates the argument
+pub fn explain_modal_semantics(countermodel: Countermodel) -> String {
+  let world_count = list.length(countermodel.worlds)
+  let relation_count = list.length(countermodel.relations)
+
+  let header =
+    "═══════════════════════════════════════════════════════════════════════\n"
+    <> "                    MODAL COUNTERMODEL ANALYSIS\n"
+    <> "═══════════════════════════════════════════════════════════════════════\n\n"
+
+  let kripke_intro =
+    "This Kripke model demonstrates invalidity:\n\n"
+    <> "  • Worlds (W): {"
+    <> string.join(list.map(countermodel.worlds, fn(w) { w.name }), ", ")
+    <> "}\n"
+    <> "  • Actual world (@): "
+    <> countermodel.actual_world
+    <> "\n"
+    <> "  • Size: "
+    <> int_to_string(world_count)
+    <> " world(s), "
+    <> int_to_string(relation_count)
+    <> " relation(s)\n\n"
+
+  let accessibility_section = case countermodel.relations {
+    [] ->
+      "Accessibility Relation R:\n"
+      <> "  R = ∅ (empty - no world can access any other world)\n"
+      <> "  This means □p is vacuously true and ◇p is always false.\n\n"
+    rels -> {
+      let rel_pairs =
+        list.map(rels, fn(r) { "(" <> r.from <> "," <> r.to <> ")" })
+      "Accessibility Relation R:\n"
+      <> "  R = {"
+      <> string.join(rel_pairs, ", ")
+      <> "}\n"
+      <> describe_accessibility_properties(countermodel)
+      <> "\n"
+    }
+  }
+
+  let valuation_section =
+    "Valuation V (truth assignment per world):\n"
+    <> string.join(
+      list.map(countermodel.worlds, fn(w) {
+        let true_str = case w.true_props {
+          [] -> "∅"
+          props -> "{" <> string.join(props, ", ") <> "}"
+        }
+        "  V(" <> w.name <> ") = " <> true_str
+      }),
+      "\n",
+    )
+    <> "\n\n"
+
+  let modal_truth_section = explain_modal_truth_at_actual(countermodel)
+
+  let frame_section =
+    "Frame Properties ("
+    <> logic_system_to_string(countermodel.logic_system)
+    <> "):\n"
+    <> format_frame_constraints(countermodel.logic_system)
+    <> "\n"
+
+  header
+  <> kripke_intro
+  <> accessibility_section
+  <> valuation_section
+  <> modal_truth_section
+  <> frame_section
+}
+
+/// Describe accessibility relation properties
+fn describe_accessibility_properties(countermodel: Countermodel) -> String {
+  let is_reflexive = check_is_reflexive(countermodel)
+  let is_transitive = check_is_transitive(countermodel)
+  let is_symmetric = check_is_symmetric(countermodel)
+
+  let props =
+    [
+      case is_reflexive {
+        True -> "reflexive"
+        False -> ""
+      },
+      case is_transitive {
+        True -> "transitive"
+        False -> ""
+      },
+      case is_symmetric {
+        True -> "symmetric"
+        False -> ""
+      },
+    ]
+    |> list.filter(fn(s) { s != "" })
+
+  case props {
+    [] -> "  Properties: none (arbitrary relation)"
+    p -> "  Properties: " <> string.join(p, ", ")
+  }
+}
+
+/// Check if the accessibility relation is reflexive
+fn check_is_reflexive(countermodel: Countermodel) -> Bool {
+  list.all(countermodel.worlds, fn(w) {
+    list.any(countermodel.relations, fn(r) {
+      r.from == w.name && r.to == w.name
+    })
+  })
+}
+
+/// Check if the accessibility relation is transitive
+fn check_is_transitive(countermodel: Countermodel) -> Bool {
+  list.all(countermodel.relations, fn(r1) {
+    list.all(countermodel.relations, fn(r2) {
+      case r1.to == r2.from {
+        True ->
+          list.any(countermodel.relations, fn(r3) {
+            r3.from == r1.from && r3.to == r2.to
+          })
+        False -> True
+      }
+    })
+  })
+}
+
+/// Check if the accessibility relation is symmetric
+fn check_is_symmetric(countermodel: Countermodel) -> Bool {
+  list.all(countermodel.relations, fn(r) {
+    list.any(countermodel.relations, fn(r2) {
+      r2.from == r.to && r2.to == r.from
+    })
+  })
+}
+
+/// Explain modal truth at the actual world
+fn explain_modal_truth_at_actual(countermodel: Countermodel) -> String {
+  let actual_world_opt =
+    list.find(countermodel.worlds, fn(w) { w.name == countermodel.actual_world })
+
+  case actual_world_opt {
+    Error(_) -> ""
+    Ok(actual_world) -> {
+      // Find accessible worlds from actual
+      let accessible =
+        countermodel.relations
+        |> list.filter(fn(r) { r.from == countermodel.actual_world })
+        |> list.map(fn(r) { r.to })
+
+      let modal_analysis = case accessible {
+        [] ->
+          "  At "
+          <> countermodel.actual_world
+          <> ", no worlds are accessible.\n"
+          <> "  Therefore: □φ is true for ALL φ (vacuously), and ◇φ is false for ALL φ.\n"
+        worlds -> {
+          "  From "
+          <> countermodel.actual_world
+          <> ", accessible worlds: {"
+          <> string.join(worlds, ", ")
+          <> "}\n"
+          <> describe_modal_operators(actual_world, worlds, countermodel.worlds)
+        }
+      }
+
+      "Modal Truth at Actual World:\n" <> modal_analysis <> "\n"
+    }
+  }
+}
+
+/// Describe modal operator semantics for given accessible worlds
+fn describe_modal_operators(
+  actual: KripkeWorld,
+  accessible_names: List(String),
+  all_worlds: List(KripkeWorld),
+) -> String {
+  // Find the accessible world data
+  let accessible_worlds =
+    list.filter(all_worlds, fn(w) { list.contains(accessible_names, w.name) })
+
+  // Find propositions that are necessarily true (true in ALL accessible worlds)
+  let all_props =
+    list.flat_map(all_worlds, fn(w) { list.append(w.true_props, w.false_props) })
+    |> list.unique
+
+  let necessary_props =
+    list.filter(all_props, fn(p) {
+      list.all(accessible_worlds, fn(w) { list.contains(w.true_props, p) })
+    })
+
+  let possible_props =
+    list.filter(all_props, fn(p) {
+      list.any(accessible_worlds, fn(w) { list.contains(w.true_props, p) })
+    })
+
+  let necessary_str = case necessary_props {
+    [] -> "  □-true: (none - no proposition is true in all accessible worlds)"
+    props -> "  □-true: {" <> string.join(props, ", ") <> "}"
+  }
+
+  let possible_str = case possible_props {
+    [] -> "  ◇-true: (none - no proposition is true in any accessible world)"
+    props -> "  ◇-true: {" <> string.join(props, ", ") <> "}"
+  }
+
+  let actual_str = case actual.true_props {
+    [] -> "  At " <> actual.name <> ": (no atomic propositions true)"
+    props ->
+      "  At " <> actual.name <> ": {" <> string.join(props, ", ") <> "} true"
+  }
+
+  actual_str <> "\n" <> necessary_str <> "\n" <> possible_str <> "\n"
+}
+
+/// Format frame constraints for the logic system
+fn format_frame_constraints(system: LogicSystem) -> String {
+  case system {
+    proposition.K -> "  (no constraints - any accessibility relation is valid)"
+    proposition.T -> "  ∀w: R(w,w)  [reflexivity - what is necessary is actual]"
+    proposition.K4 ->
+      "  ∀w,v,u: R(w,v) ∧ R(v,u) → R(w,u)  [transitivity - positive introspection]"
+    proposition.S4 ->
+      "  ∀w: R(w,w)  [reflexivity]\n"
+      <> "  ∀w,v,u: R(w,v) ∧ R(v,u) → R(w,u)  [transitivity]"
+    proposition.S5 ->
+      "  R is an equivalence relation:\n"
+      <> "    ∀w: R(w,w)  [reflexivity]\n"
+      <> "    ∀w,v,u: R(w,v) ∧ R(v,u) → R(w,u)  [transitivity]\n"
+      <> "    ∀w,v: R(w,v) → R(v,w)  [symmetry]"
+    proposition.KD ->
+      "  ∀w∃v: R(w,v)  [seriality - every world has an accessible world]"
+    proposition.KD45 ->
+      "  ∀w∃v: R(w,v)  [seriality]\n"
+      <> "  ∀w,v,u: R(w,v) ∧ R(v,u) → R(w,u)  [transitivity]\n"
+      <> "  ∀w,v,u: R(w,v) ∧ R(w,u) → R(v,u)  [euclidean]"
+  }
+}
+
 fn describe_world(world: KripkeWorld) -> String {
   let true_desc = case list.length(world.true_props) {
     0 -> "  • No atomic propositions are true"

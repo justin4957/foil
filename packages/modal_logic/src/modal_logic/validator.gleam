@@ -659,9 +659,11 @@ fn interpret_check_result(
       // SAT means a countermodel exists - the argument is INVALID
       case config.detailed_countermodels {
         True -> {
-          let countermodel_desc =
-            extract_countermodel_description(model, logic_system)
-          Invalid(countermodel_desc)
+          // Extract structured countermodel from Z3 model
+          let countermodel = extract_countermodel(model, logic_system)
+          // Generate human-readable explanation
+          let explanation = generate_countermodel_explanation(countermodel)
+          Invalid(explanation)
         }
         False -> Invalid("Countermodel exists")
       }
@@ -677,18 +679,31 @@ fn interpret_check_result(
   }
 }
 
-/// Extract a human-readable countermodel description from a Z3 model
-fn extract_countermodel_description(
+/// Extract a structured Countermodel from a Z3 model
+///
+/// This function parses the Z3 model values and constructs a proper
+/// Countermodel type with worlds, accessibility relations, and truth values.
+///
+/// ## Z3 Variable Naming Convention
+/// - Proposition variables: `{prop}_w{index}` (e.g., "p_w0", "q_w1")
+/// - Accessibility relations: `R_w{from}_w{to}` (e.g., "R_w0_w1")
+///
+/// ## Example
+/// ```gleam
+/// let countermodel = extract_countermodel(model, S4)
+/// // Returns Countermodel with worlds, relations, actual_world="w0"
+/// ```
+pub fn extract_countermodel(
   model: solver.SolverModel,
   logic_system: LogicSystem,
-) -> String {
+) -> Countermodel {
   let model_values = dict.to_list(model.values)
 
   // Extract world-indexed proposition values
   let prop_values =
     list.filter_map(model_values, fn(entry) {
       let #(name, value) = entry
-      // Parse variable names like "p_w0", "q_w1", "R_w0_w1"
+      // Parse variable names like "p_w0", "q_w1"
       case parse_variable_name(name) {
         Some(#(prop_name, world_idx)) -> {
           let bool_value = case value {
@@ -701,8 +716,23 @@ fn extract_countermodel_description(
       }
     })
 
-  // Group by world
-  let worlds = collect_world_info(prop_values)
+  // Group by world and create KripkeWorld records
+  let worlds_data = collect_world_info(prop_values)
+  let kripke_worlds =
+    list.map(worlds_data, fn(world_tuple) {
+      let #(world_idx, true_props, false_props) = world_tuple
+      KripkeWorld(
+        name: "w" <> int.to_string(world_idx),
+        true_props: true_props,
+        false_props: false_props,
+      )
+    })
+
+  // Ensure we have at least the actual world (w0)
+  let final_worlds = case kripke_worlds {
+    [] -> [KripkeWorld(name: "w0", true_props: [], false_props: [])]
+    _ -> kripke_worlds
+  }
 
   // Extract accessibility relations
   let relations =
@@ -711,7 +741,11 @@ fn extract_countermodel_description(
       case parse_accessibility_relation(name) {
         Some(#(from, to)) -> {
           case value {
-            BoolVal(True) -> Ok(#(from, to))
+            BoolVal(True) ->
+              Ok(AccessibilityRelation(
+                from: "w" <> int.to_string(from),
+                to: "w" <> int.to_string(to),
+              ))
             _ -> Error(Nil)
           }
         }
@@ -719,8 +753,150 @@ fn extract_countermodel_description(
       }
     })
 
-  // Format the countermodel
-  format_countermodel_output(worlds, relations, logic_system)
+  Countermodel(
+    worlds: final_worlds,
+    relations: relations,
+    actual_world: "w0",
+    logic_system: logic_system,
+  )
+}
+
+/// Generate a human-readable explanation of why the countermodel
+/// demonstrates the argument is invalid
+///
+/// This function analyzes the countermodel structure and produces
+/// a detailed explanation including:
+/// - World configuration and truth values
+/// - Accessibility relations
+/// - Why premises are true but conclusion is false
+fn generate_countermodel_explanation(countermodel: Countermodel) -> String {
+  let world_count = list.length(countermodel.worlds)
+  let relation_count = list.length(countermodel.relations)
+
+  // Header with countermodel summary
+  let header =
+    "Countermodel found with "
+    <> int.to_string(world_count)
+    <> " world(s) and "
+    <> int.to_string(relation_count)
+    <> " relation(s).\n\n"
+
+  // World details
+  let worlds_section = format_worlds_explanation(countermodel.worlds)
+
+  // Relations section
+  let relations_section = format_relations_explanation(countermodel.relations)
+
+  // Frame properties for the logic system
+  let frame_section = format_frame_properties(countermodel.logic_system)
+
+  // Explanation of why argument is invalid
+  let invalidity_explanation = generate_invalidity_explanation(countermodel)
+
+  header
+  <> worlds_section
+  <> relations_section
+  <> frame_section
+  <> invalidity_explanation
+}
+
+/// Format the worlds section of the explanation
+fn format_worlds_explanation(worlds: List(KripkeWorld)) -> String {
+  let header = "Worlds:\n"
+  let world_lines =
+    worlds
+    |> list.map(fn(world) {
+      let true_str = case world.true_props {
+        [] -> "∅"
+        props -> "{" <> string.join(props, ", ") <> "}"
+      }
+      let false_str = case world.false_props {
+        [] -> "∅"
+        props -> "{" <> string.join(props, ", ") <> "}"
+      }
+      "  " <> world.name <> ": true=" <> true_str <> ", false=" <> false_str
+    })
+    |> string.join("\n")
+
+  header <> world_lines <> "\n\n"
+}
+
+/// Format the relations section of the explanation
+fn format_relations_explanation(
+  relations: List(AccessibilityRelation),
+) -> String {
+  case relations {
+    [] -> "Accessibility: (no relations - worlds are isolated)\n\n"
+    rels -> {
+      let rel_strs =
+        list.map(rels, fn(rel) { "R(" <> rel.from <> "," <> rel.to <> ")" })
+      "Accessibility: " <> string.join(rel_strs, ", ") <> "\n\n"
+    }
+  }
+}
+
+/// Format frame properties for the logic system
+fn format_frame_properties(logic_system: LogicSystem) -> String {
+  let props = case logic_system {
+    proposition.K -> "none (basic modal logic)"
+    proposition.T -> "reflexive"
+    proposition.K4 -> "transitive"
+    proposition.S4 -> "reflexive, transitive"
+    proposition.S5 -> "reflexive, transitive, symmetric (equivalence)"
+    proposition.KD -> "serial"
+    proposition.KD45 -> "serial, transitive, euclidean"
+  }
+  "Frame properties ["
+  <> logic_system_to_string(logic_system)
+  <> "]: "
+  <> props
+  <> "\n\n"
+}
+
+/// Generate explanation of why the countermodel invalidates the argument
+fn generate_invalidity_explanation(countermodel: Countermodel) -> String {
+  let actual_world_info =
+    list.find(countermodel.worlds, fn(w) { w.name == countermodel.actual_world })
+
+  case actual_world_info {
+    Ok(actual) -> {
+      let true_summary = case actual.true_props {
+        [] -> "no propositions are true"
+        props -> string.join(props, ", ") <> " are true"
+      }
+      let false_summary = case actual.false_props {
+        [] -> "no propositions are explicitly false"
+        props -> string.join(props, ", ") <> " are false"
+      }
+
+      "Explanation:\n"
+      <> "  In the actual world ("
+      <> countermodel.actual_world
+      <> "), "
+      <> true_summary
+      <> " and "
+      <> false_summary
+      <> ".\n"
+      <> "  This configuration satisfies all premises while making the conclusion false,\n"
+      <> "  demonstrating that the argument is INVALID in "
+      <> logic_system_to_string(countermodel.logic_system)
+      <> " logic."
+    }
+    Error(_) ->
+      "Explanation: The countermodel demonstrates invalidity in "
+      <> logic_system_to_string(countermodel.logic_system)
+      <> " logic."
+  }
+}
+
+/// Extract a human-readable countermodel description from a Z3 model
+/// (Deprecated: Use extract_countermodel for structured data)
+fn extract_countermodel_description(
+  model: solver.SolverModel,
+  logic_system: LogicSystem,
+) -> String {
+  let countermodel = extract_countermodel(model, logic_system)
+  generate_countermodel_explanation(countermodel)
 }
 
 /// Parse a world-indexed variable name like "p_w0" -> Some(#("p", 0))
