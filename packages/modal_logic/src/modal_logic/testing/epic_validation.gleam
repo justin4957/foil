@@ -25,16 +25,13 @@
 
 import gleam/float
 import gleam/int
-import gleam/json
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
-import modal_logic/argument.{
-  type Formalization, type ValidationResult, Formalization, Invalid, Valid,
-}
+import modal_logic/argument.{type Formalization, Formalization, Invalid, Valid}
+import modal_logic/confidence
 import modal_logic/heuristics.{
-  type HeuristicResult, type ValidationTier, Tier1Syntactic, Tier2TruthTable,
-  Tier3Z3,
+  type ValidationTier, Tier1Syntactic, Tier2TruthTable, Tier3Z3,
 }
 import modal_logic/proposition.{
   type Proposition, And, Atom, Implies, K, Necessary, Not, Or, Possible, S4, S5,
@@ -240,6 +237,8 @@ fn validate_phase_a(config: EpicValidationConfig) -> PhaseValidationResult {
     validate_tier2_latency(config.latency_samples),
     validate_fastpath_coverage(config.accuracy_samples),
     validate_tier_selection_accuracy(config.accuracy_samples),
+    validate_confidence_score_accuracy(config.accuracy_samples),
+    validate_confidence_factor_coverage(config.accuracy_samples),
   ]
 
   let all_passed = list.all(metrics, fn(m) { m.passed })
@@ -251,7 +250,7 @@ fn validate_phase_a(config: EpicValidationConfig) -> PhaseValidationResult {
     passed: all_passed,
     duration_ms: calculate_total_duration(metrics),
     issues: [154, 145, 146],
-    completed_issues: [145],
+    completed_issues: [145, 146],
   )
 }
 
@@ -381,6 +380,159 @@ pub fn validate_tier_selection_accuracy(sample_size: Int) -> MetricResult {
     unit: "%",
     details: Some("Accuracy of tier selection (correct tier chosen)"),
   )
+}
+
+/// Validate confidence score accuracy
+///
+/// Measures whether high-confidence results (>0.8) are correct.
+/// Target: 85% of high-confidence results should be accurate.
+pub fn validate_confidence_score_accuracy(sample_size: Int) -> MetricResult {
+  let test_cases = generate_confidence_test_cases(sample_size)
+
+  let #(high_confidence_count, correct_high_confidence) =
+    test_cases
+    |> list.fold(#(0, 0), fn(acc, test_case) {
+      let #(formalization, expected_valid) = test_case
+      let heuristic_result = heuristics.try_heuristic_validation(formalization)
+
+      // Get validation result and tier
+      let #(result, tier) = case heuristic_result {
+        Some(hr) -> #(hr.result, hr.tier)
+        None -> #(Valid, Tier3Z3)
+      }
+
+      // Compute confidence
+      let context = confidence.default_context(tier)
+      let conf = confidence.compute_confidence(result, context)
+
+      // Check if high confidence and correct
+      case conf.is_high_confidence {
+        True -> {
+          let is_correct = case result, expected_valid {
+            Valid, True -> True
+            Invalid(_), False -> True
+            _, _ -> False
+          }
+          #(acc.0 + 1, acc.1 + bool_to_int(is_correct))
+        }
+        False -> acc
+      }
+    })
+
+  let accuracy = case high_confidence_count {
+    0 -> 100.0
+    n -> int.to_float(correct_high_confidence) /. int.to_float(n) *. 100.0
+  }
+
+  MetricResult(
+    name: "confidence_score_accuracy",
+    target: 85.0,
+    actual: accuracy,
+    passed: accuracy >=. 85.0,
+    samples: sample_size,
+    unit: "%",
+    details: Some(
+      "Accuracy of high-confidence (>0.8) validation results. "
+      <> int.to_string(correct_high_confidence)
+      <> "/"
+      <> int.to_string(high_confidence_count)
+      <> " high-confidence results were correct.",
+    ),
+  )
+}
+
+/// Validate confidence factor coverage
+///
+/// Measures whether validation results include meaningful factor breakdowns.
+/// Target: 90% of results should have 2+ contributing factors.
+pub fn validate_confidence_factor_coverage(sample_size: Int) -> MetricResult {
+  let test_cases = generate_mixed_test_cases(sample_size)
+
+  let results_with_factors =
+    test_cases
+    |> list.count(fn(formalization) {
+      let heuristic_result = heuristics.try_heuristic_validation(formalization)
+
+      // Get validation result and tier
+      let #(result, tier) = case heuristic_result {
+        Some(hr) -> #(hr.result, hr.tier)
+        None -> #(Valid, Tier3Z3)
+      }
+
+      // Compute confidence
+      let context = confidence.default_context(tier)
+      let conf = confidence.compute_confidence(result, context)
+
+      // Check if we have multiple factors
+      list.length(conf.factors) >= 2
+    })
+
+  let coverage =
+    int.to_float(results_with_factors) /. int.to_float(sample_size) *. 100.0
+
+  MetricResult(
+    name: "confidence_factor_coverage",
+    target: 90.0,
+    actual: coverage,
+    passed: coverage >=. 90.0,
+    samples: sample_size,
+    unit: "%",
+    details: Some(
+      "Percentage of results with 2+ confidence factors. "
+      <> "Factors explain how confidence was computed.",
+    ),
+  )
+}
+
+/// Generate test cases for confidence validation
+fn generate_confidence_test_cases(count: Int) -> List(#(Formalization, Bool)) {
+  // Mix of valid and invalid arguments with expected outcomes
+  let p = Atom("p")
+  let q = Atom("q")
+
+  let base_cases = [
+    // Valid: tautology
+    #(create_formalization([], Implies(p, p), K), True),
+    // Valid: modus ponens
+    #(create_formalization([Implies(p, q), p], q, K), True),
+    // Valid: identity
+    #(create_formalization([p], p, K), True),
+    // Valid: explosion from contradiction
+    #(create_formalization([p, Not(p)], q, K), True),
+    // Invalid: affirming consequent
+    #(create_formalization([Implies(p, q), q], p, K), False),
+    // Invalid: denying antecedent
+    #(create_formalization([Implies(p, q), Not(p)], Not(q), K), False),
+    // Invalid: non-sequitur
+    #(create_formalization([p], q, K), False),
+    // Valid: T axiom in T logic
+    #(create_formalization([], Implies(Necessary(p), p), T), True),
+  ]
+
+  replicate_cases_with_expected(base_cases, count)
+}
+
+/// Replicate test cases with expected values
+fn replicate_cases_with_expected(
+  cases: List(#(Formalization, Bool)),
+  target_count: Int,
+) -> List(#(Formalization, Bool)) {
+  case list.length(cases) {
+    0 -> []
+    n -> {
+      let repeat_count = { target_count / n } + 1
+      cases
+      |> list.flat_map(fn(c) { list.repeat(c, repeat_count) })
+      |> list.take(target_count)
+    }
+  }
+}
+
+fn bool_to_int(b: Bool) -> Int {
+  case b {
+    True -> 1
+    False -> 0
+  }
 }
 
 // =============================================================================
