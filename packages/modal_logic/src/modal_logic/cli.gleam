@@ -3,6 +3,8 @@
 //// Provides a command-line interface for modal logic argument analysis.
 //// Supports interactive and batch modes, argument input, and result display.
 
+import gleam/float
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
@@ -11,6 +13,7 @@ import modal_logic/proposition.{
   type LogicSystem, type Proposition, And, Atom, Believes, Implies, K, K4, KD,
   KD45, Knows, Necessary, Not, Obligatory, Or, Permitted, Possible, S4, S5, T,
 }
+import modal_logic/testing/epic_validation
 
 // ============================================================================
 // CLI Configuration
@@ -114,6 +117,11 @@ pub type Command {
   PatternSearchCommand(query: String)
   ListDatasetTemplatesCommand
   DatasetTemplatesCommand(dataset: String)
+  // Epic validation commands
+  EpicValidateCommand(phase: Option(String), output_format: Option(String))
+  EpicProgressCommand(epic: Int, output_format: Option(String))
+  MetricCheckCommand(metric: String, target: Option(Float))
+  BenchmarkCommand(suite: String, iterations: Int)
 }
 
 /// Argument input for analysis
@@ -201,6 +209,59 @@ pub fn parse_args_with_config(
           ParseError(
             msg,
             Some("Formats: mermaid, graphviz, latex, markdown, json"),
+          )
+      }
+    // Epic validation commands
+    ["epic-validate"] -> ParseSuccess(EpicValidateCommand(None, None), config)
+    ["epic-validate", "--phase", phase] ->
+      ParseSuccess(EpicValidateCommand(Some(phase), None), config)
+    ["epic-validate", "--phase", phase, "--output", format] ->
+      ParseSuccess(EpicValidateCommand(Some(phase), Some(format)), config)
+    ["epic-validate", "--output", format] ->
+      ParseSuccess(EpicValidateCommand(None, Some(format)), config)
+    ["epic-progress"] -> ParseSuccess(EpicProgressCommand(144, None), config)
+    ["epic-progress", "--epic", epic_str] ->
+      case int.parse(epic_str) {
+        Ok(epic) -> ParseSuccess(EpicProgressCommand(epic, None), config)
+        Error(_) ->
+          ParseError(
+            "Invalid epic number: " <> epic_str,
+            Some("Use a number like 144"),
+          )
+      }
+    ["epic-progress", "--epic", epic_str, "--format", format] ->
+      case int.parse(epic_str) {
+        Ok(epic) ->
+          ParseSuccess(EpicProgressCommand(epic, Some(format)), config)
+        Error(_) ->
+          ParseError(
+            "Invalid epic number: " <> epic_str,
+            Some("Use a number like 144"),
+          )
+      }
+    ["epic-progress", "--format", format] ->
+      ParseSuccess(EpicProgressCommand(144, Some(format)), config)
+    ["metric-check", "--metric", metric] ->
+      ParseSuccess(MetricCheckCommand(metric, None), config)
+    ["metric-check", "--metric", metric, "--target", target_str] ->
+      case float.parse(target_str) {
+        Ok(target) ->
+          ParseSuccess(MetricCheckCommand(metric, Some(target)), config)
+        Error(_) ->
+          ParseError(
+            "Invalid target: " <> target_str,
+            Some("Use a number like 100.0"),
+          )
+      }
+    ["benchmark", "--suite", suite] ->
+      ParseSuccess(BenchmarkCommand(suite, 100), config)
+    ["benchmark", "--suite", suite, "--iterations", iter_str] ->
+      case int.parse(iter_str) {
+        Ok(iter) -> ParseSuccess(BenchmarkCommand(suite, iter), config)
+        Error(_) ->
+          ParseError(
+            "Invalid iterations: " <> iter_str,
+            Some("Use a number like 100"),
           )
       }
     [unknown, ..] ->
@@ -683,6 +744,7 @@ pub fn help_text(topic: Option(String)) -> String {
     Some("systems") -> systems_help()
     Some("export") -> export_help()
     Some("examples") -> examples_help()
+    Some("epic") -> epic_help()
     Some(t) -> "Unknown help topic: " <> t <> "\n\n" <> main_help()
   }
 }
@@ -702,8 +764,14 @@ COMMANDS:
     export <fmt> <out>    Export results to file
     systems               List available logic systems
     example [system]      Show example arguments
-    help [topic]          Show help (topics: analyze, validate, systems, export)
+    help [topic]          Show help (topics: analyze, validate, systems, export, epic)
     version, -v           Show version information
+
+EPIC VALIDATION (Issue #144):
+    epic-validate         Validate epic phase metrics
+    epic-progress         Show overall epic progress
+    metric-check          Check specific metrics
+    benchmark             Run validation benchmarks
 
 OPTIONS:
     --verbose             Enable verbose output
@@ -716,6 +784,8 @@ EXAMPLES:
     modal_logic validate --premises \"□(p→q),□p\" --conclusion \"□q\" --system K
     modal_logic interactive
     modal_logic export mermaid output.md
+    modal_logic epic-validate --phase A --output json
+    modal_logic epic-progress --format markdown
 
 For more information on a command, use: modal_logic help <command>"
 }
@@ -851,6 +921,72 @@ NATURAL LANGUAGE:
 TRY:
     modal_logic example K
     modal_logic example S5"
+}
+
+fn epic_help() -> String {
+  "EPIC VALIDATION - Test infrastructure for Epic #144
+
+COMMANDS:
+    epic-validate         Validate specific epic phase(s)
+    epic-progress         Show overall epic progress report
+    metric-check          Check individual metrics against targets
+    benchmark             Run validation benchmarks
+
+EPIC-VALIDATE:
+    modal_logic epic-validate
+    modal_logic epic-validate --phase A
+    modal_logic epic-validate --phase A --output json
+
+    Options:
+        --phase <A|B|C|D|E>   Phase to validate (default: all)
+        --output <format>     Output format: json, markdown, text
+
+EPIC-PROGRESS:
+    modal_logic epic-progress
+    modal_logic epic-progress --epic 144 --format markdown
+
+    Options:
+        --epic <number>       Epic issue number (default: 144)
+        --format <format>     Output format: json, markdown, text
+
+METRIC-CHECK:
+    modal_logic metric-check --metric tier1_latency_p80
+    modal_logic metric-check --metric fastpath_coverage --target 80.0
+
+    Options:
+        --metric <name>       Metric to check
+        --target <value>      Override target value
+
+BENCHMARK:
+    modal_logic benchmark --suite tiered-validation
+    modal_logic benchmark --suite tiered-validation --iterations 200
+
+    Options:
+        --suite <name>        Benchmark suite: tiered-validation
+        --iterations <n>      Number of iterations (default: 100)
+
+PHASES:
+    A - Fast Validation Pipeline (tiered validation, confidence scoring)
+    B - Reason Chain Analysis (formalization, traces, fallacy detection)
+    C - Multi-System Comparison (parallel validation, cross-system)
+    D - Accuracy Benchmarking (FOLIO, LogiQA, InPhO datasets)
+    E - Extended Logic Support (probabilistic logic)
+
+METRICS (Phase A):
+    tier1_latency_p80       - Tier 1 syntactic latency at p80 (<1ms)
+    tier2_latency_avg       - Tier 2 truth table average latency (<50ms)
+    fastpath_coverage       - % formulas resolved without Z3 (>80%)
+    tier_selection_accuracy - Correct tier selection rate (>95%)
+
+EXAMPLES:
+    # Validate Phase A and output JSON for CI
+    modal_logic epic-validate --phase A --output json > results.json
+
+    # Generate markdown progress report
+    modal_logic epic-progress --format markdown > PROGRESS.md
+
+    # Check if fast-path coverage meets target
+    modal_logic metric-check --metric fastpath_coverage --target 80.0"
 }
 
 /// Get version string
@@ -1094,3 +1230,337 @@ fn float_truncate(f: Float) -> Int
 
 @external(erlang, "erlang", "float")
 fn int_to_float(n: Int) -> Float
+
+// =============================================================================
+// Epic Validation Commands
+// =============================================================================
+
+/// Execute epic-validate command
+pub fn execute_epic_validate(
+  phase: Option(String),
+  output_format: Option(String),
+) -> String {
+  // Parse output format
+  let format = case output_format {
+    Some(fmt) ->
+      case epic_validation.parse_output_format(fmt) {
+        Ok(f) -> f
+        Error(_) -> epic_validation.TextOutput
+      }
+    None -> epic_validation.TextOutput
+  }
+
+  let config =
+    epic_validation.EpicValidationConfig(
+      latency_samples: 100,
+      accuracy_samples: 50,
+      verbose: False,
+      output_format: format,
+      baseline_path: None,
+    )
+
+  case phase {
+    Some(phase_str) ->
+      case epic_validation.parse_phase(phase_str) {
+        Ok(p) -> {
+          let result = epic_validation.validate_phase(p, config)
+          format_phase_result(result, format)
+        }
+        Error(msg) -> "Error: " <> msg
+      }
+    None -> {
+      // Validate all phases
+      let progress = epic_validation.generate_epic_progress(config)
+      epic_validation.format_progress(progress, config)
+    }
+  }
+}
+
+/// Execute epic-progress command
+pub fn execute_epic_progress(
+  _epic: Int,
+  output_format: Option(String),
+) -> String {
+  let format = case output_format {
+    Some(fmt) ->
+      case epic_validation.parse_output_format(fmt) {
+        Ok(f) -> f
+        Error(_) -> epic_validation.TextOutput
+      }
+    None -> epic_validation.TextOutput
+  }
+
+  let config =
+    epic_validation.EpicValidationConfig(
+      latency_samples: 100,
+      accuracy_samples: 50,
+      verbose: False,
+      output_format: format,
+      baseline_path: None,
+    )
+
+  let progress = epic_validation.generate_epic_progress(config)
+  epic_validation.format_progress(progress, config)
+}
+
+/// Execute metric-check command
+pub fn execute_metric_check(metric: String, target: Option(Float)) -> String {
+  let config = epic_validation.default_config()
+
+  // Run the specific metric
+  let result = case metric {
+    "tier1_latency_p80" ->
+      epic_validation.validate_tier1_latency(config.latency_samples)
+    "tier2_latency_avg" ->
+      epic_validation.validate_tier2_latency(config.latency_samples)
+    "fastpath_coverage" ->
+      epic_validation.validate_fastpath_coverage(config.accuracy_samples)
+    "tier_selection_accuracy" ->
+      epic_validation.validate_tier_selection_accuracy(config.accuracy_samples)
+    _ ->
+      epic_validation.MetricResult(
+        name: metric,
+        target: 0.0,
+        actual: 0.0,
+        passed: False,
+        samples: 0,
+        unit: "",
+        details: Some("Unknown metric: " <> metric),
+      )
+  }
+
+  // Override target if specified
+  let final_result = case target {
+    Some(t) ->
+      epic_validation.MetricResult(
+        ..result,
+        target: t,
+        passed: result.actual >=. t,
+      )
+    None -> result
+  }
+
+  format_metric_result(final_result)
+}
+
+/// Execute benchmark command
+pub fn execute_benchmark(suite: String, iterations: Int) -> String {
+  case suite {
+    "tiered-validation" -> run_tiered_validation_benchmark(iterations)
+    _ ->
+      "Unknown benchmark suite: " <> suite <> "\nAvailable: tiered-validation"
+  }
+}
+
+fn run_tiered_validation_benchmark(iterations: Int) -> String {
+  let config =
+    epic_validation.EpicValidationConfig(
+      latency_samples: iterations,
+      accuracy_samples: iterations / 2,
+      verbose: False,
+      output_format: epic_validation.TextOutput,
+      baseline_path: None,
+    )
+
+  let tier1 = epic_validation.validate_tier1_latency(config.latency_samples)
+  let tier2 = epic_validation.validate_tier2_latency(config.latency_samples)
+  let coverage =
+    epic_validation.validate_fastpath_coverage(config.accuracy_samples)
+  let accuracy =
+    epic_validation.validate_tier_selection_accuracy(config.accuracy_samples)
+
+  let header =
+    string.repeat("=", 60)
+    <> "\nTiered Validation Benchmark Results\n"
+    <> string.repeat("=", 60)
+    <> "\n\n"
+
+  let summary =
+    "Iterations: "
+    <> int.to_string(iterations)
+    <> "\n\n"
+    <> "| Metric | Target | Actual | Status |\n"
+    <> "|--------|--------|--------|--------|\n"
+    <> format_metric_table_row(tier1)
+    <> format_metric_table_row(tier2)
+    <> format_metric_table_row(coverage)
+    <> format_metric_table_row(accuracy)
+    <> "\n"
+
+  let all_passed =
+    tier1.passed && tier2.passed && coverage.passed && accuracy.passed
+
+  let footer = case all_passed {
+    True -> "Overall: PASS - All metrics meet targets"
+    False -> "Overall: FAIL - Some metrics below targets"
+  }
+
+  header <> summary <> footer
+}
+
+fn format_phase_result(
+  result: epic_validation.PhaseValidationResult,
+  format: epic_validation.EpicOutputFormat,
+) -> String {
+  case format {
+    epic_validation.JsonOutput -> format_phase_result_json(result)
+    epic_validation.MarkdownOutput -> format_phase_result_markdown(result)
+    epic_validation.TextOutput -> format_phase_result_text(result)
+  }
+}
+
+fn format_phase_result_json(
+  result: epic_validation.PhaseValidationResult,
+) -> String {
+  let metrics_json =
+    result.metrics
+    |> list.map(fn(m) {
+      "    {\"name\": \""
+      <> m.name
+      <> "\", \"target\": "
+      <> float.to_string(m.target)
+      <> ", \"actual\": "
+      <> float.to_string(m.actual)
+      <> ", \"passed\": "
+      <> bool_to_json_str(m.passed)
+      <> "}"
+    })
+    |> string.join(",\n")
+
+  "{\n  \"phase\": \""
+  <> epic_validation.phase_to_string(result.phase)
+  <> "\",\n  \"name\": \""
+  <> result.name
+  <> "\",\n  \"passed\": "
+  <> bool_to_json_str(result.passed)
+  <> ",\n  \"metrics\": [\n"
+  <> metrics_json
+  <> "\n  ]\n}"
+}
+
+fn format_phase_result_markdown(
+  result: epic_validation.PhaseValidationResult,
+) -> String {
+  let status_icon = case result.passed {
+    True -> "[x]"
+    False -> "[ ]"
+  }
+
+  let header =
+    "## "
+    <> status_icon
+    <> " Phase "
+    <> epic_validation.phase_to_string(result.phase)
+    <> ": "
+    <> result.name
+    <> "\n\n"
+
+  let metrics_table =
+    "| Metric | Target | Actual | Status |\n"
+    <> "|--------|--------|--------|--------|\n"
+    <> {
+      result.metrics
+      |> list.map(format_metric_table_row)
+      |> string.join("")
+    }
+
+  header <> metrics_table
+}
+
+fn format_phase_result_text(
+  result: epic_validation.PhaseValidationResult,
+) -> String {
+  let status = case result.passed {
+    True -> "[PASS]"
+    False -> "[PENDING]"
+  }
+
+  let header =
+    "Phase "
+    <> epic_validation.phase_to_string(result.phase)
+    <> ": "
+    <> result.name
+    <> " "
+    <> status
+    <> "\n"
+    <> string.repeat("-", 50)
+    <> "\n"
+
+  let metrics =
+    result.metrics
+    |> list.map(fn(m) {
+      let status_str = case m.passed {
+        True -> "[OK]"
+        False -> "[--]"
+      }
+      status_str
+      <> " "
+      <> m.name
+      <> ": "
+      <> float.to_string(m.actual)
+      <> m.unit
+      <> " (target: "
+      <> float.to_string(m.target)
+      <> m.unit
+      <> ")"
+    })
+    |> string.join("\n")
+
+  header <> metrics
+}
+
+fn format_metric_result(metric: epic_validation.MetricResult) -> String {
+  let status = case metric.passed {
+    True -> "PASS"
+    False -> "FAIL"
+  }
+
+  let details_str = case metric.details {
+    Some(d) -> "\nDetails: " <> d
+    None -> ""
+  }
+
+  "Metric: "
+  <> metric.name
+  <> "\n"
+  <> "Target: "
+  <> float.to_string(metric.target)
+  <> metric.unit
+  <> "\n"
+  <> "Actual: "
+  <> float.to_string(metric.actual)
+  <> metric.unit
+  <> "\n"
+  <> "Samples: "
+  <> int.to_string(metric.samples)
+  <> "\n"
+  <> "Status: "
+  <> status
+  <> details_str
+}
+
+fn format_metric_table_row(metric: epic_validation.MetricResult) -> String {
+  let status = case metric.passed {
+    True -> "PASS"
+    False -> "FAIL"
+  }
+
+  "| "
+  <> metric.name
+  <> " | "
+  <> float.to_string(metric.target)
+  <> metric.unit
+  <> " | "
+  <> float.to_string(metric.actual)
+  <> metric.unit
+  <> " | "
+  <> status
+  <> " |\n"
+}
+
+fn bool_to_json_str(b: Bool) -> String {
+  case b {
+    True -> "true"
+    False -> "false"
+  }
+}
