@@ -490,19 +490,20 @@ def main():
             },
             "message": "Z3 solver is required for modal logic validation. Please install Z3 to continue."
         }
-        print(json.dumps(error_response), flush=True)
+        print(json.dumps(error_response, separators=(',', ':')), flush=True)
         sys.exit(1)
 
     driver = Z3Driver()
 
     # Send ready signal with version information
+    # Use compact JSON (no spaces) for Erlang port parsing compatibility
     print(json.dumps({
         "ready": True,
         "z3_available": True,
         "z3_version": Z3_VERSION,
         "driver_version": "0.2.0",
         "python_version": sys.version.split()[0]
-    }), flush=True)
+    }, separators=(',', ':')), flush=True)
 
     # Main loop: read JSON commands, write JSON responses
     for line in sys.stdin:
@@ -514,11 +515,11 @@ def main():
             request = json.loads(line)
         except json.JSONDecodeError as e:
             response = {"id": 0, "error": f"Invalid JSON: {str(e)}"}
-            print(json.dumps(response), flush=True)
+            print(json.dumps(response, separators=(',', ':')), flush=True)
             continue
 
         response = driver.handle_command(request)
-        print(json.dumps(response), flush=True)
+        print(json.dumps(response, separators=(',', ':')), flush=True)
 
 
 if __name__ == "__main__":
