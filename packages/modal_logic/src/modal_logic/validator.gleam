@@ -29,6 +29,10 @@ import modal_logic/argument.{
   type Formalization, type ValidationResult, Invalid, Valid,
 }
 import modal_logic/cache.{type CacheConfig, type MemoryCache}
+import modal_logic/heuristics.{
+  type HeuristicConfig, type HeuristicResult, type ValidationTier,
+  Tier1Syntactic, Tier2TruthTable, Tier3Z3,
+}
 import modal_logic/proposition.{type LogicSystem, type Proposition}
 import z3/modal/compile as z3_compile
 import z3/solver.{type SolverCheckResult, SolverSat, SolverUnknown, SolverUnsat}
@@ -99,6 +103,10 @@ pub type ValidationResponse {
     worlds_explored: Option(Int),
     /// SMT-LIB formula used (for debugging)
     smt_formula: Option(String),
+    /// Which validation tier was used (Tier1Syntactic, Tier2TruthTable, Tier3Z3)
+    tier_used: Option(ValidationTier),
+    /// Explanation of how result was determined (for heuristic tiers)
+    tier_explanation: Option(String),
   )
 }
 
@@ -299,6 +307,38 @@ pub fn with_degradation_mode(
 }
 
 // =============================================================================
+// Tier Information Functions
+// =============================================================================
+
+/// Get a human-readable description of a validation tier
+pub fn tier_description(tier: ValidationTier) -> String {
+  heuristics.tier_description(tier)
+}
+
+/// Get the expected latency in milliseconds for a tier
+pub fn tier_expected_latency_ms(tier: ValidationTier) -> Int {
+  heuristics.tier_expected_latency_ms(tier)
+}
+
+/// Check if a tier is a heuristic tier (Tier 1 or 2)
+pub fn is_heuristic_tier(tier: ValidationTier) -> Bool {
+  case tier {
+    Tier1Syntactic -> True
+    Tier2TruthTable -> True
+    Tier3Z3 -> False
+  }
+}
+
+/// Get the tier name as a string
+pub fn tier_name(tier: ValidationTier) -> String {
+  case tier {
+    Tier1Syntactic -> "Tier1Syntactic"
+    Tier2TruthTable -> "Tier2TruthTable"
+    Tier3Z3 -> "Tier3Z3"
+  }
+}
+
+// =============================================================================
 // Validation Functions
 // =============================================================================
 
@@ -353,6 +393,8 @@ pub fn validate_request(
           duration_ms: 0,
           worlds_explored: None,
           smt_formula: None,
+          tier_used: None,
+          tier_explanation: Some("Result retrieved from cache"),
         )
       let new_state =
         ValidatorState(
@@ -364,9 +406,9 @@ pub fn validate_request(
     }
 
     _ -> {
-      // Run validation
-      let #(result, duration, worlds, smt) =
-        run_validation(state.config, request.formalization)
+      // Run tiered validation (heuristics first, then Z3 if needed)
+      let #(result, duration, worlds, smt, tier, explanation) =
+        run_tiered_validation(state.config, request.formalization)
 
       // Cache the result
       let updated_cache =
@@ -380,6 +422,8 @@ pub fn validate_request(
           duration_ms: duration,
           worlds_explored: worlds,
           smt_formula: smt,
+          tier_used: Some(tier),
+          tier_explanation: explanation,
         )
 
       let new_state =
@@ -629,10 +673,57 @@ fn prop_to_smt(prop: Proposition, world: String) -> String {
 }
 
 // =============================================================================
+// Tiered Validation Pipeline
+// =============================================================================
+
+/// Run tiered validation: heuristics first, then Z3 if needed
+///
+/// This function implements a tiered validation pipeline:
+/// - **Tier 1**: Syntactic checks (tautology/contradiction detection, identity rules)
+/// - **Tier 2**: Truth table enumeration (for small propositional formulas)
+/// - **Tier 3**: Full Z3 SMT solving (fallback for complex cases)
+///
+/// The tiered approach provides fast results for simple cases while
+/// maintaining full accuracy for complex modal logic validation.
+fn run_tiered_validation(
+  config: ValidatorConfig,
+  formalization: Formalization,
+) -> #(
+  ValidationResult,
+  Int,
+  Option(Int),
+  Option(String),
+  ValidationTier,
+  Option(String),
+) {
+  // Try heuristic validation first (Tier 1 and Tier 2)
+  case heuristics.try_heuristic_validation(formalization) {
+    Some(heuristic_result) -> {
+      // Heuristics succeeded - return fast result
+      let duration = heuristics.tier_expected_latency_ms(heuristic_result.tier)
+      #(
+        heuristic_result.result,
+        duration,
+        None,
+        None,
+        heuristic_result.tier,
+        Some(heuristic_result.explanation),
+      )
+    }
+    None -> {
+      // Heuristics inconclusive - fall back to Z3 (Tier 3)
+      let #(result, duration, worlds, smt) =
+        run_validation(config, formalization)
+      #(result, duration, worlds, smt, Tier3Z3, Some("Full Z3 SMT solving"))
+    }
+  }
+}
+
+// =============================================================================
 // Z3 Solver Integration
 // =============================================================================
 
-/// Run validation using the Z3 solver
+/// Run validation using the Z3 solver (Tier 3)
 ///
 /// This function:
 /// 1. Converts the formalization's propositions to Z3's local Proposition type
