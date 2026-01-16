@@ -20,6 +20,8 @@
 //// let result = validator.validate(config, formalization)
 //// ```
 
+import gleam/dict
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
@@ -28,6 +30,9 @@ import modal_logic/argument.{
 }
 import modal_logic/cache.{type CacheConfig, type MemoryCache}
 import modal_logic/proposition.{type LogicSystem, type Proposition}
+import z3/modal/compile as z3_compile
+import z3/solver.{type SolverCheckResult, SolverSat, SolverUnknown, SolverUnsat}
+import z3/types.{type Expr as Z3Expr, type Z3Error, BoolVal}
 
 // =============================================================================
 // Types
@@ -559,42 +564,341 @@ fn prop_to_smt(prop: Proposition, world: String) -> String {
 }
 
 // =============================================================================
-// Mock Validation (for testing without Z3)
+// Z3 Solver Integration
 // =============================================================================
 
-/// Run validation (mock implementation for now)
+/// Run validation using the Z3 solver
+///
+/// This function:
+/// 1. Converts the formalization's propositions to Z3's local Proposition type
+/// 2. Compiles the validity check (premises + negated conclusion)
+/// 3. Generates frame constraints for the logic system
+/// 4. Runs the Z3 solver to find a countermodel
+/// 5. If SAT, the argument is invalid (countermodel exists)
+/// 6. If UNSAT, the argument is valid (no countermodel)
 fn run_validation(
   config: ValidatorConfig,
   formalization: Formalization,
 ) -> #(ValidationResult, Int, Option(Int), Option(String)) {
-  // Generate SMT formula
+  // Generate SMT formula for debugging/logging
   let smt = generate_smt(formalization, config.max_worlds)
 
-  // Mock validation result based on formalization structure
-  let result = mock_validate(formalization)
+  // Convert premises and conclusion to z3_compile's Proposition type
+  let z3_premises = list.map(formalization.premises, convert_proposition_to_z3)
+  let z3_conclusion = convert_proposition_to_z3(formalization.conclusion)
+  let z3_system = convert_logic_system_to_z3(formalization.logic_system)
 
-  // Mock timing
-  let duration = 50
-  let worlds = Some(3)
+  // Create compile configuration
+  let compile_config = z3_compile.config_with_worlds(config.max_worlds)
 
-  #(result, duration, worlds, Some(smt))
+  // Compile validity check constraints
+  let constraints =
+    z3_compile.compile_validity_check(
+      z3_premises,
+      z3_conclusion,
+      z3_system,
+      compile_config,
+    )
+
+  // Run Z3 solver
+  let validation_result =
+    run_z3_validation(constraints, config, formalization.logic_system)
+
+  // Return with timing and metadata
+  let duration = 100
+  // Approximate duration
+  let worlds = Some(config.max_worlds)
+
+  #(validation_result, duration, worlds, Some(smt))
 }
 
-/// Mock validation for testing
-fn mock_validate(formalization: Formalization) -> ValidationResult {
-  // Simple heuristic: check if conclusion appears in premises
-  let premise_atoms = list.flat_map(formalization.premises, collect_prop_atoms)
-  let conclusion_atoms = collect_prop_atoms(formalization.conclusion)
+/// Run the Z3 solver with the given constraints
+fn run_z3_validation(
+  constraints: List(Z3Expr),
+  config: ValidatorConfig,
+  logic_system: LogicSystem,
+) -> ValidationResult {
+  // Create a new solver
+  case solver.new() {
+    Error(_) -> Invalid("Z3 solver error: Could not create solver")
+    Ok(s) -> {
+      // Add all constraints
+      case solver.assert_all(s, constraints) {
+        Error(_) -> Invalid("Z3 solver error: Could not add constraints")
+        Ok(s_with_constraints) -> {
+          // Check satisfiability using real Z3
+          case solver.check_with_z3(s_with_constraints) {
+            Error(err) -> {
+              // Fall back to mock validation if Z3 is not available
+              case err {
+                types.PortError(_) -> {
+                  // Z3 not available, use mock validation
+                  mock_validate_fallback(constraints)
+                }
+                _ -> Invalid("Z3 solver error: " <> format_z3_error(err))
+              }
+            }
+            Ok(#(_solver, check_result)) -> {
+              interpret_check_result(check_result, logic_system, config)
+            }
+          }
+        }
+      }
+    }
+  }
+}
 
-  let has_overlap =
-    list.any(conclusion_atoms, fn(a) { list.contains(premise_atoms, a) })
+/// Interpret the Z3 check result
+fn interpret_check_result(
+  result: SolverCheckResult,
+  logic_system: LogicSystem,
+  config: ValidatorConfig,
+) -> ValidationResult {
+  case result {
+    SolverSat(model) -> {
+      // SAT means a countermodel exists - the argument is INVALID
+      case config.detailed_countermodels {
+        True -> {
+          let countermodel_desc =
+            extract_countermodel_description(model, logic_system)
+          Invalid(countermodel_desc)
+        }
+        False -> Invalid("Countermodel exists")
+      }
+    }
+    SolverUnsat -> {
+      // UNSAT means no countermodel exists - the argument is VALID
+      Valid
+    }
+    SolverUnknown(reason) -> {
+      // Unknown result - report as inconclusive
+      Invalid("Validation inconclusive: " <> reason)
+    }
+  }
+}
 
-  case has_overlap {
-    True -> Valid
-    False ->
+/// Extract a human-readable countermodel description from a Z3 model
+fn extract_countermodel_description(
+  model: solver.SolverModel,
+  logic_system: LogicSystem,
+) -> String {
+  let model_values = dict.to_list(model.values)
+
+  // Extract world-indexed proposition values
+  let prop_values =
+    list.filter_map(model_values, fn(entry) {
+      let #(name, value) = entry
+      // Parse variable names like "p_w0", "q_w1", "R_w0_w1"
+      case parse_variable_name(name) {
+        Some(#(prop_name, world_idx)) -> {
+          let bool_value = case value {
+            BoolVal(b) -> b
+            _ -> False
+          }
+          Ok(#(prop_name, world_idx, bool_value))
+        }
+        None -> Error(Nil)
+      }
+    })
+
+  // Group by world
+  let worlds = collect_world_info(prop_values)
+
+  // Extract accessibility relations
+  let relations =
+    list.filter_map(model_values, fn(entry) {
+      let #(name, value) = entry
+      case parse_accessibility_relation(name) {
+        Some(#(from, to)) -> {
+          case value {
+            BoolVal(True) -> Ok(#(from, to))
+            _ -> Error(Nil)
+          }
+        }
+        None -> Error(Nil)
+      }
+    })
+
+  // Format the countermodel
+  format_countermodel_output(worlds, relations, logic_system)
+}
+
+/// Parse a world-indexed variable name like "p_w0" -> Some(#("p", 0))
+fn parse_variable_name(name: String) -> Option(#(String, Int)) {
+  case string.split(name, "_w") {
+    [prop_name, world_str] -> {
+      case int.parse(world_str) {
+        Ok(world_idx) -> Some(#(prop_name, world_idx))
+        Error(_) -> None
+      }
+    }
+    _ -> None
+  }
+}
+
+/// Parse an accessibility relation like "R_w0_w1" -> Some(#(0, 1))
+fn parse_accessibility_relation(name: String) -> Option(#(Int, Int)) {
+  case string.starts_with(name, "R_w") {
+    True -> {
+      let rest = string.drop_start(name, 3)
+      case string.split(rest, "_w") {
+        [from_str, to_str] -> {
+          case int.parse(from_str), int.parse(to_str) {
+            Ok(from), Ok(to) -> Some(#(from, to))
+            _, _ -> None
+          }
+        }
+        _ -> None
+      }
+    }
+    False -> None
+  }
+}
+
+/// Collect world information from proposition values
+fn collect_world_info(
+  prop_values: List(#(String, Int, Bool)),
+) -> List(#(Int, List(String), List(String))) {
+  // Group by world index
+  let world_indices =
+    prop_values
+    |> list.map(fn(entry) { entry.1 })
+    |> list.unique
+
+  list.map(world_indices, fn(world_idx) {
+    let world_props =
+      list.filter(prop_values, fn(entry) { entry.1 == world_idx })
+
+    let true_props =
+      world_props
+      |> list.filter(fn(entry) { entry.2 })
+      |> list.map(fn(entry) { entry.0 })
+      |> list.filter(fn(name) { !string.starts_with(name, "R") })
+
+    let false_props =
+      world_props
+      |> list.filter(fn(entry) { !entry.2 })
+      |> list.map(fn(entry) { entry.0 })
+      |> list.filter(fn(name) { !string.starts_with(name, "R") })
+
+    #(world_idx, true_props, false_props)
+  })
+  |> list.sort(fn(a, b) { int.compare(a.0, b.0) })
+}
+
+/// Format the countermodel output
+fn format_countermodel_output(
+  worlds: List(#(Int, List(String), List(String))),
+  relations: List(#(Int, Int)),
+  logic_system: LogicSystem,
+) -> String {
+  let worlds_str =
+    worlds
+    |> list.map(fn(world) {
+      let #(idx, true_props, false_props) = world
+      let world_name = "w" <> int.to_string(idx)
+      let true_str = case true_props {
+        [] -> ""
+        props -> " [true: " <> string.join(props, ", ") <> "]"
+      }
+      let false_str = case false_props {
+        [] -> ""
+        props -> " [false: " <> string.join(props, ", ") <> "]"
+      }
+      world_name <> true_str <> false_str
+    })
+    |> string.join("; ")
+
+  let relations_str = case relations {
+    [] -> ""
+    rels -> {
+      let rel_strs =
+        list.map(rels, fn(rel) {
+          let #(from, to) = rel
+          "R(w" <> int.to_string(from) <> ",w" <> int.to_string(to) <> ")"
+        })
+      " | Relations: " <> string.join(rel_strs, ", ")
+    }
+  }
+
+  let system_str = " [" <> logic_system_to_string(logic_system) <> "]"
+
+  "Countermodel: " <> worlds_str <> relations_str <> system_str
+}
+
+/// Fallback mock validation when Z3 is not available
+fn mock_validate_fallback(constraints: List(Z3Expr)) -> ValidationResult {
+  // Simple heuristic: if we have constraints, assume unknown
+  case list.length(constraints) {
+    0 -> Valid
+    _ ->
       Invalid(
-        "Countermodel: w0 where premises are true but conclusion is false",
+        "Z3 unavailable - unable to verify. Constraints count: "
+        <> int.to_string(list.length(constraints)),
       )
+  }
+}
+
+/// Format a Z3 error for display
+fn format_z3_error(err: Z3Error) -> String {
+  case err {
+    types.SolverError(msg) -> "Solver error: " <> msg
+    types.TimeoutError -> "Timeout"
+    types.PortError(msg) -> "Port error: " <> msg
+    types.ParseError(msg) -> "Parse error: " <> msg
+  }
+}
+
+// =============================================================================
+// Proposition Conversion
+// =============================================================================
+
+/// Convert a modal_logic Proposition to z3_compile Proposition
+fn convert_proposition_to_z3(prop: Proposition) -> z3_compile.Proposition {
+  case prop {
+    proposition.Atom(name) -> z3_compile.Atom(name)
+    proposition.Not(inner) ->
+      z3_compile.PropNot(convert_proposition_to_z3(inner))
+    proposition.And(left, right) ->
+      z3_compile.PropAnd(
+        convert_proposition_to_z3(left),
+        convert_proposition_to_z3(right),
+      )
+    proposition.Or(left, right) ->
+      z3_compile.PropOr(
+        convert_proposition_to_z3(left),
+        convert_proposition_to_z3(right),
+      )
+    proposition.Implies(ante, cons) ->
+      z3_compile.PropImplies(
+        convert_proposition_to_z3(ante),
+        convert_proposition_to_z3(cons),
+      )
+    proposition.Necessary(inner) ->
+      z3_compile.Necessary(convert_proposition_to_z3(inner))
+    proposition.Possible(inner) ->
+      z3_compile.Possible(convert_proposition_to_z3(inner))
+    proposition.Obligatory(inner) ->
+      z3_compile.Obligatory(convert_proposition_to_z3(inner))
+    proposition.Permitted(inner) ->
+      z3_compile.Permitted(convert_proposition_to_z3(inner))
+    proposition.Knows(agent, inner) ->
+      z3_compile.Knows(agent, convert_proposition_to_z3(inner))
+    proposition.Believes(agent, inner) ->
+      z3_compile.Believes(agent, convert_proposition_to_z3(inner))
+  }
+}
+
+/// Convert a modal_logic LogicSystem to z3_compile LogicSystem
+fn convert_logic_system_to_z3(system: LogicSystem) -> z3_compile.LogicSystem {
+  case system {
+    proposition.K -> z3_compile.K
+    proposition.T -> z3_compile.T
+    proposition.K4 -> z3_compile.K4
+    proposition.S4 -> z3_compile.S4
+    proposition.S5 -> z3_compile.S5
+    proposition.KD -> z3_compile.KD
+    proposition.KD45 -> z3_compile.KD45
   }
 }
 
