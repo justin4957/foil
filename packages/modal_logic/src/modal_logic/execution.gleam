@@ -446,6 +446,8 @@ pub fn always_valid_validator() -> ValidateCallback {
       duration_ms: 10,
       worlds_explored: Some(1),
       smt_formula: None,
+      tier_used: None,
+      tier_explanation: Some("Mock validator - always valid"),
     ))
   }
 }
@@ -460,6 +462,8 @@ pub fn always_invalid_validator(reason: String) -> ValidateCallback {
       duration_ms: 10,
       worlds_explored: Some(3),
       smt_formula: None,
+      tier_used: None,
+      tier_explanation: Some("Mock validator - always invalid"),
     ))
   }
 }
