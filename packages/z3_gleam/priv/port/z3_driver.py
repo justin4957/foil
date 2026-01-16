@@ -45,6 +45,12 @@ try:
 except ImportError:
     Z3_AVAILABLE = False
     Z3_VERSION = None
+    # Define placeholder types for type hints when Z3 is not available
+    Context = None
+    Solver = None
+    sat = None
+    unsat = None
+    unknown = None
 
 
 class Z3Driver:
@@ -96,6 +102,12 @@ class Z3Driver:
             elif cmd == "reset":
                 return self._reset(request_id, request)
 
+            elif cmd == "set_timeout":
+                return self._set_timeout(request_id, request)
+
+            elif cmd == "set_rlimit":
+                return self._set_rlimit(request_id, request)
+
             else:
                 return {"id": request_id, "error": f"Unknown command: {cmd}"}
 
@@ -137,13 +149,25 @@ class Z3Driver:
 
         ctx = self.contexts[ctx_id]
         solver = Solver(ctx=ctx)
+
+        # Apply timeout configuration if provided
+        z3_timeout = request.get("z3_timeout", 0)
+        z3_rlimit = request.get("z3_rlimit", 0)
+
+        if z3_timeout > 0:
+            solver.set("timeout", z3_timeout)
+        if z3_rlimit > 0:
+            solver.set("rlimit", z3_rlimit)
+
         self.solvers[solver_id] = solver
 
         return {
             "id": request_id,
             "ok": True,
             "solver_id": solver_id,
-            "context_id": ctx_id
+            "context_id": ctx_id,
+            "z3_timeout": z3_timeout,
+            "z3_rlimit": z3_rlimit
         }
 
     def _del_solver(self, request_id: int, request: Dict) -> Dict:
@@ -188,11 +212,15 @@ class Z3Driver:
         elif result == unsat:
             return {"id": request_id, "ok": True, "result": "unsat"}
         else:
+            reason = str(solver.reason_unknown())
+            # Detect timeout-specific reasons
+            is_timeout = "timeout" in reason.lower() or "canceled" in reason.lower()
             return {
                 "id": request_id,
                 "ok": True,
                 "result": "unknown",
-                "reason": str(solver.reason_unknown())
+                "reason": reason,
+                "timeout": is_timeout
             }
 
     def _get_model(self, request_id: int, request: Dict) -> Dict:
@@ -244,6 +272,30 @@ class Z3Driver:
 
         self.solvers[solver_id].reset()
         return {"id": request_id, "ok": True}
+
+    def _set_timeout(self, request_id: int, request: Dict) -> Dict:
+        """Set timeout on an existing solver."""
+        solver_id = request.get("solver_id")
+        timeout_ms = request.get("timeout_ms", 0)
+
+        if solver_id not in self.solvers:
+            return {"id": request_id, "error": f"Solver {solver_id} not found"}
+
+        solver = self.solvers[solver_id]
+        solver.set("timeout", timeout_ms)
+        return {"id": request_id, "ok": True, "timeout_ms": timeout_ms}
+
+    def _set_rlimit(self, request_id: int, request: Dict) -> Dict:
+        """Set resource limit on an existing solver."""
+        solver_id = request.get("solver_id")
+        rlimit = request.get("rlimit", 0)
+
+        if solver_id not in self.solvers:
+            return {"id": request_id, "error": f"Solver {solver_id} not found"}
+
+        solver = self.solvers[solver_id]
+        solver.set("rlimit", rlimit)
+        return {"id": request_id, "ok": True, "rlimit": rlimit}
 
     def _parse_expr(self, expr_json: Dict, ctx: Context, variables: Dict) -> Any:
         """Parse a JSON expression into a Z3 expression."""
