@@ -787,6 +787,7 @@ fn get_validation_status(arg: Argument) -> Option(String) {
     case v {
       argument.Valid -> "valid"
       argument.Invalid(_) -> "invalid"
+      argument.Unknown(_) -> "unknown"
       argument.Timeout -> "timeout"
       argument.Error(_) -> "error"
     }

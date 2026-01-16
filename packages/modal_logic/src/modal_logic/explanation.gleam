@@ -240,6 +240,7 @@ fn generate_brief_explanation(
       "The argument is valid: the conclusion necessarily follows from the premises."
     argument.Invalid(_) ->
       "The argument is invalid: there's a scenario where the premises are true but the conclusion is false."
+    argument.Unknown(reason) -> "The argument's validity is unknown: " <> reason
     argument.Timeout ->
       "The argument's validity could not be determined within the given constraints."
     argument.Error(msg) -> "An error occurred during validation: " <> msg
@@ -321,6 +322,21 @@ fn generate_standard_explanation(
         <> ". This might be due to a syntax error or an unsupported construction."
 
       let points = ["Check the argument syntax", "Verify all terms are defined"]
+
+      #(text, points)
+    }
+
+    argument.Unknown(reason) -> {
+      let text =
+        "The validity of this argument could not be determined: "
+        <> reason
+        <> ". This typically occurs when the Z3 solver is unavailable or returned an inconclusive result."
+
+      let points = [
+        "Ensure Z3 solver is installed (pip3 install z3-solver)",
+        "Try simplifying the argument",
+        "Check that all modal operators are correctly specified",
+      ]
 
       #(text, points)
     }
@@ -419,6 +435,25 @@ fn generate_detailed_explanation(
       let text = "## Error During Analysis\n\n" <> "An error occurred: " <> msg
 
       #(text, ["Error occurred: " <> msg])
+    }
+
+    argument.Unknown(reason) -> {
+      let text =
+        "## Validity Analysis\n\n"
+        <> "The validity of this argument **could not be determined**: "
+        <> reason
+        <> "\n\n"
+        <> "This typically occurs when:\n\n"
+        <> "1. The Z3 solver is not installed or unavailable\n"
+        <> "2. The solver returned an inconclusive result\n"
+        <> "3. The problem is too complex for the solver\n\n"
+        <> "### Installation\n\n"
+        <> "To install Z3, run: `pip3 install z3-solver`"
+
+      #(text, [
+        "Validity unknown: " <> reason,
+        "Install Z3: pip3 install z3-solver",
+      ])
     }
   }
 
@@ -628,6 +663,7 @@ fn generate_one_line_summary(result: ValidationResult) -> String {
   case result {
     argument.Valid -> "Valid: conclusion follows from premises"
     argument.Invalid(_) -> "Invalid: countermodel exists"
+    argument.Unknown(reason) -> "Unknown: " <> reason
     argument.Timeout -> "Validity undetermined (timeout)"
     argument.Error(msg) -> "Error: " <> msg
   }
@@ -647,6 +683,11 @@ fn generate_follow_up_questions(
       "What additional premises would make the argument valid?",
       "Is the conclusion too strong?",
       "Would a different logic system help?",
+    ]
+    argument.Unknown(_) -> [
+      "Is Z3 solver installed and available?",
+      "Should we try with a simpler formula?",
+      "Would reducing the number of worlds help?",
     ]
     argument.Timeout -> [
       "Should we try a stronger logic system?",

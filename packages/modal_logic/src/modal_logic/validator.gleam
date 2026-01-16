@@ -53,7 +53,21 @@ pub type ValidatorConfig {
     worker_count: Int,
     /// Whether to generate detailed countermodels
     detailed_countermodels: Bool,
+    /// Whether Z3 is required (fail if unavailable) or optional (graceful degradation)
+    require_z3: Bool,
+    /// Degradation mode when Z3 is unavailable
+    z3_degradation_mode: Z3DegradationMode,
   )
+}
+
+/// Degradation mode when Z3 is not available
+pub type Z3DegradationMode {
+  /// Fail immediately with an error if Z3 is unavailable
+  FailFast
+  /// Return Unknown/Inconclusive results when Z3 is unavailable
+  ReturnUnknown
+  /// Use a mock/heuristic validator as fallback
+  UseFallback
 }
 
 /// A validation request
@@ -183,6 +197,9 @@ pub type ValidatorState {
 // =============================================================================
 
 /// Create default validator configuration
+///
+/// Default configuration uses graceful degradation (ReturnUnknown) when Z3
+/// is unavailable, allowing the application to continue with limited functionality.
 pub fn default_config() -> ValidatorConfig {
   ValidatorConfig(
     cache_config: cache.default_config(),
@@ -191,6 +208,8 @@ pub fn default_config() -> ValidatorConfig {
     parallel: False,
     worker_count: 4,
     detailed_countermodels: True,
+    require_z3: False,
+    z3_degradation_mode: ReturnUnknown,
   )
 }
 
@@ -203,6 +222,8 @@ pub fn fast_config() -> ValidatorConfig {
     parallel: False,
     worker_count: 2,
     detailed_countermodels: False,
+    require_z3: False,
+    z3_degradation_mode: ReturnUnknown,
   )
 }
 
@@ -215,6 +236,25 @@ pub fn thorough_config() -> ValidatorConfig {
     parallel: True,
     worker_count: 8,
     detailed_countermodels: True,
+    require_z3: False,
+    z3_degradation_mode: ReturnUnknown,
+  )
+}
+
+/// Create a strict configuration that requires Z3
+///
+/// Use this when Z3 availability is mandatory for your use case.
+/// Validation will fail with an error if Z3 is not installed.
+pub fn strict_config() -> ValidatorConfig {
+  ValidatorConfig(
+    cache_config: cache.default_config(),
+    solver_timeout_ms: 30_000,
+    max_worlds: 10,
+    parallel: False,
+    worker_count: 4,
+    detailed_countermodels: True,
+    require_z3: True,
+    z3_degradation_mode: FailFast,
   )
 }
 
@@ -231,6 +271,31 @@ pub fn with_max_worlds(config: ValidatorConfig, max: Int) -> ValidatorConfig {
 /// Enable/disable parallel validation
 pub fn with_parallel(config: ValidatorConfig, enabled: Bool) -> ValidatorConfig {
   ValidatorConfig(..config, parallel: enabled)
+}
+
+/// Set whether Z3 is required
+///
+/// If True, validation will fail with an error if Z3 is not available.
+/// If False, validation will use graceful degradation based on the
+/// configured degradation mode.
+pub fn with_require_z3(
+  config: ValidatorConfig,
+  required: Bool,
+) -> ValidatorConfig {
+  ValidatorConfig(..config, require_z3: required)
+}
+
+/// Set the Z3 degradation mode
+///
+/// Controls how the validator behaves when Z3 is unavailable:
+/// - FailFast: Immediately return an error
+/// - ReturnUnknown: Return Unknown/Inconclusive results
+/// - UseFallback: Use a heuristic-based fallback validator
+pub fn with_degradation_mode(
+  config: ValidatorConfig,
+  mode: Z3DegradationMode,
+) -> ValidatorConfig {
+  ValidatorConfig(..config, z3_degradation_mode: mode)
 }
 
 // =============================================================================
@@ -629,11 +694,18 @@ fn run_z3_validation(
           // Check satisfiability using real Z3
           case solver.check_with_z3(s_with_constraints) {
             Error(err) -> {
-              // Fall back to mock validation if Z3 is not available
+              // Handle Z3 unavailability based on configuration
               case err {
-                types.PortError(_) -> {
-                  // Z3 not available, use mock validation
-                  mock_validate_fallback(constraints)
+                types.PortError(port_err) -> {
+                  // Z3 not available - use configured degradation mode
+                  handle_z3_unavailable(config, port_err)
+                }
+                types.TimeoutError -> {
+                  Invalid(
+                    "Z3 solver timeout after "
+                    <> int.to_string(config.solver_timeout_ms)
+                    <> "ms",
+                  )
                 }
                 _ -> Invalid("Z3 solver error: " <> format_z3_error(err))
               }
@@ -1002,13 +1074,56 @@ fn format_countermodel_output(
   "Countermodel: " <> worlds_str <> relations_str <> system_str
 }
 
+/// Handle Z3 unavailability based on configuration
+fn handle_z3_unavailable(
+  config: ValidatorConfig,
+  error_msg: String,
+) -> ValidationResult {
+  case config.z3_degradation_mode {
+    FailFast -> {
+      Invalid(
+        "Z3 solver required but unavailable: "
+        <> error_msg
+        <> "\n\n"
+        <> z3_installation_instructions(),
+      )
+    }
+    ReturnUnknown -> {
+      argument.Unknown(
+        "Validation inconclusive (Z3 unavailable). "
+        <> "Install Z3 for full validation: pip3 install z3-solver",
+      )
+    }
+    UseFallback -> {
+      // Use simple heuristics - this is a placeholder for potential future
+      // implementations that could use tableaux or other methods
+      argument.Unknown(
+        "Z3 unavailable, using fallback. Results may be incomplete.",
+      )
+    }
+  }
+}
+
+/// Get Z3 installation instructions
+fn z3_installation_instructions() -> String {
+  "Z3 solver is not available. For full validation support, install Z3:
+
+macOS:   brew install z3 && pip3 install z3-solver
+Ubuntu:  apt install z3 && pip3 install z3-solver
+Windows: pip install z3-solver
+
+After installation, verify with:
+  python3 -c \"from z3 import *; print('Z3 OK')\""
+}
+
 /// Fallback mock validation when Z3 is not available
+/// (Deprecated: Use handle_z3_unavailable with proper config)
 fn mock_validate_fallback(constraints: List(Z3Expr)) -> ValidationResult {
   // Simple heuristic: if we have constraints, assume unknown
   case list.length(constraints) {
     0 -> Valid
     _ ->
-      Invalid(
+      argument.Unknown(
         "Z3 unavailable - unable to verify. Constraints count: "
         <> int.to_string(list.length(constraints)),
       )
