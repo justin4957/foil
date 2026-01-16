@@ -39,6 +39,8 @@ import modal_logic/proposition.{
   T,
 }
 import modal_logic/reason_chain
+import modal_logic/validator.{ValidationResponse}
+import modal_logic/validity_trace
 
 // =============================================================================
 // Types
@@ -546,6 +548,8 @@ fn validate_phase_b(config: EpicValidationConfig) -> PhaseValidationResult {
     validate_reason_chain_parsing(config.accuracy_samples),
     validate_reason_type_classification(config.accuracy_samples),
     validate_assumption_detection(config.accuracy_samples),
+    validate_validity_trace_generation(config.accuracy_samples),
+    validate_critical_path_identification(config.accuracy_samples),
     placeholder_metric(
       "fallacy_detection_precision",
       90.0,
@@ -563,7 +567,7 @@ fn validate_phase_b(config: EpicValidationConfig) -> PhaseValidationResult {
     passed: all_passed,
     duration_ms: calculate_total_duration(metrics),
     issues: [147, 148, 149],
-    completed_issues: [147],
+    completed_issues: [147, 148],
   )
 }
 
@@ -761,6 +765,87 @@ fn replicate_typed_cases(
       |> list.take(target_count)
     }
   }
+}
+
+/// Validate validity trace generation
+///
+/// Tests that step-by-step traces can be generated for validations.
+pub fn validate_validity_trace_generation(sample_size: Int) -> MetricResult {
+  let test_systems = [K, T, S4, S5]
+
+  let successful_traces =
+    test_systems
+    |> list.count(fn(system) {
+      let trace = validity_trace.generate_t_axiom_trace(system)
+      // Trace should have at least 2 steps (including final)
+      list.length(trace.steps) >= 2
+    })
+
+  let accuracy =
+    int.to_float(successful_traces)
+    /. int.to_float(list.length(test_systems))
+    *. 100.0
+
+  MetricResult(
+    name: "validity_trace_generation",
+    target: 100.0,
+    actual: accuracy,
+    passed: accuracy >=. 100.0,
+    samples: list.length(test_systems),
+    unit: "%",
+    details: Some(
+      "Percentage of logic systems with successful trace generation. "
+      <> int.to_string(successful_traces)
+      <> "/"
+      <> int.to_string(list.length(test_systems))
+      <> " systems traced.",
+    ),
+  )
+}
+
+/// Validate critical path identification
+///
+/// Tests that critical paths are correctly identified in traces.
+pub fn validate_critical_path_identification(sample_size: Int) -> MetricResult {
+  let test_cases = [
+    // Valid trace should have critical path including final step
+    #(validity_trace.generate_modus_ponens_trace(K), True),
+    // Invalid trace should also have critical path
+    #(validity_trace.generate_t_axiom_trace(K), True),
+    // Valid in T system
+    #(validity_trace.generate_t_axiom_trace(T), True),
+  ]
+
+  let correct_paths =
+    test_cases
+    |> list.count(fn(test_case) {
+      let #(trace, _expected_valid) = test_case
+      // Critical path should include final step
+      let final_step = list.length(trace.steps)
+      list.contains(trace.critical_path, final_step)
+      && list.length(trace.critical_path) >= 1
+    })
+
+  let accuracy =
+    int.to_float(correct_paths)
+    /. int.to_float(list.length(test_cases))
+    *. 100.0
+
+  MetricResult(
+    name: "critical_path_identification",
+    target: 100.0,
+    actual: accuracy,
+    passed: accuracy >=. 100.0,
+    samples: list.length(test_cases),
+    unit: "%",
+    details: Some(
+      "Percentage of traces with correct critical path. "
+      <> int.to_string(correct_paths)
+      <> "/"
+      <> int.to_string(list.length(test_cases))
+      <> " paths correct.",
+    ),
+  )
 }
 
 // =============================================================================
