@@ -31,6 +31,7 @@ import gleam/result
 import gleam/string
 import modal_logic/argument.{type Formalization, Formalization, Invalid, Valid}
 import modal_logic/confidence
+import modal_logic/fallacy
 import modal_logic/heuristics.{
   type ValidationTier, Tier1Syntactic, Tier2TruthTable, Tier3Z3,
 }
@@ -550,12 +551,8 @@ fn validate_phase_b(config: EpicValidationConfig) -> PhaseValidationResult {
     validate_assumption_detection(config.accuracy_samples),
     validate_validity_trace_generation(config.accuracy_samples),
     validate_critical_path_identification(config.accuracy_samples),
-    placeholder_metric(
-      "fallacy_detection_precision",
-      90.0,
-      "Fallacy detection precision",
-      config.accuracy_samples,
-    ),
+    validate_fallacy_detection_precision(config.accuracy_samples),
+    validate_fallacy_explanation_quality(config.accuracy_samples),
   ]
 
   let all_passed = list.all(metrics, fn(m) { m.passed })
@@ -567,7 +564,7 @@ fn validate_phase_b(config: EpicValidationConfig) -> PhaseValidationResult {
     passed: all_passed,
     duration_ms: calculate_total_duration(metrics),
     issues: [147, 148, 149],
-    completed_issues: [147, 148],
+    completed_issues: [147, 148, 149],
   )
 }
 
@@ -846,6 +843,173 @@ pub fn validate_critical_path_identification(sample_size: Int) -> MetricResult {
       <> " paths correct.",
     ),
   )
+}
+
+/// Validate fallacy detection precision
+///
+/// Tests that common logical fallacies are correctly detected.
+pub fn validate_fallacy_detection_precision(sample_size: Int) -> MetricResult {
+  // Test cases: formalization with known fallacy, expected fallacy type
+  let test_cases = generate_fallacy_test_cases()
+
+  let correct_detections =
+    test_cases
+    |> list.count(fn(test_case) {
+      let #(formalization, expected_fallacy_type) = test_case
+      let analysis =
+        fallacy.analyze_formalization(formalization, fallacy.default_config())
+      // Check if expected fallacy was detected
+      list.any(analysis.detected_fallacies, fn(detected) {
+        detected.fallacy_type == expected_fallacy_type
+      })
+    })
+
+  let accuracy =
+    int.to_float(correct_detections)
+    /. int.to_float(list.length(test_cases))
+    *. 100.0
+
+  MetricResult(
+    name: "fallacy_detection_precision",
+    target: 90.0,
+    actual: accuracy,
+    passed: accuracy >=. 90.0,
+    samples: list.length(test_cases),
+    unit: "%",
+    details: Some(
+      "Percentage of known fallacies correctly detected. "
+      <> int.to_string(correct_detections)
+      <> "/"
+      <> int.to_string(list.length(test_cases))
+      <> " detected correctly.",
+    ),
+  )
+}
+
+/// Validate fallacy explanation quality
+///
+/// Tests that detected fallacies have helpful explanations and fix suggestions.
+pub fn validate_fallacy_explanation_quality(sample_size: Int) -> MetricResult {
+  let test_cases = generate_fallacy_test_cases()
+
+  let quality_checks =
+    test_cases
+    |> list.count(fn(test_case) {
+      let #(formalization, _expected_type) = test_case
+      let analysis =
+        fallacy.analyze_formalization(formalization, fallacy.default_config())
+
+      // Check that all detected fallacies have quality explanations
+      list.all(analysis.detected_fallacies, fn(detected) {
+        // Must have non-empty name, description, example, and fix suggestion
+        string.length(detected.name) > 0
+        && string.length(detected.description) > 10
+        && string.length(detected.example) > 0
+        && string.length(detected.fix_suggestion) > 10
+      })
+    })
+
+  let accuracy =
+    int.to_float(quality_checks)
+    /. int.to_float(list.length(test_cases))
+    *. 100.0
+
+  MetricResult(
+    name: "fallacy_explanation_quality",
+    target: 95.0,
+    actual: accuracy,
+    passed: accuracy >=. 95.0,
+    samples: list.length(test_cases),
+    unit: "%",
+    details: Some(
+      "Percentage of detected fallacies with quality explanations. "
+      <> int.to_string(quality_checks)
+      <> "/"
+      <> int.to_string(list.length(test_cases))
+      <> " have quality explanations.",
+    ),
+  )
+}
+
+/// Generate test cases for fallacy detection
+fn generate_fallacy_test_cases() -> List(#(Formalization, fallacy.FallacyType)) {
+  [
+    // Affirming the Consequent: p → q, q ⊢ p
+    #(
+      Formalization(
+        id: "fallacy_test_1",
+        argument_id: "test_aff_cons",
+        logic_system: K,
+        premises: [Implies(Atom("rain"), Atom("wet")), Atom("wet")],
+        conclusion: Atom("rain"),
+        assumptions: [],
+        validation: Some(Invalid("Affirming the consequent")),
+        created_at: Some("2024-01-01"),
+        updated_at: Some("2024-01-01"),
+      ),
+      fallacy.AffirmingConsequent,
+    ),
+    // Denying the Antecedent: p → q, ¬p ⊢ ¬q
+    #(
+      Formalization(
+        id: "fallacy_test_2",
+        argument_id: "test_deny_ant",
+        logic_system: K,
+        premises: [Implies(Atom("study"), Atom("pass")), Not(Atom("study"))],
+        conclusion: Not(Atom("pass")),
+        assumptions: [],
+        validation: Some(Invalid("Denying the antecedent")),
+        created_at: Some("2024-01-01"),
+        updated_at: Some("2024-01-01"),
+      ),
+      fallacy.DenyingAntecedent,
+    ),
+    // Affirming a Disjunct: p ∨ q, p ⊢ ¬q
+    #(
+      Formalization(
+        id: "fallacy_test_3",
+        argument_id: "test_aff_disj",
+        logic_system: K,
+        premises: [Or(Atom("rain"), Atom("sunny")), Atom("rain")],
+        conclusion: Not(Atom("sunny")),
+        assumptions: [],
+        validation: Some(Invalid("Affirming a disjunct")),
+        created_at: Some("2024-01-01"),
+        updated_at: Some("2024-01-01"),
+      ),
+      fallacy.AffirmingDisjunct,
+    ),
+    // Circular Reasoning: p ⊢ p
+    #(
+      Formalization(
+        id: "fallacy_test_4",
+        argument_id: "test_circular",
+        logic_system: K,
+        premises: [Atom("p")],
+        conclusion: Atom("p"),
+        assumptions: [],
+        validation: Some(Valid),
+        created_at: Some("2024-01-01"),
+        updated_at: Some("2024-01-01"),
+      ),
+      fallacy.CircularReasoning,
+    ),
+    // Non Sequitur: p ⊢ q (unrelated)
+    #(
+      Formalization(
+        id: "fallacy_test_5",
+        argument_id: "test_non_seq",
+        logic_system: K,
+        premises: [Atom("sky_blue")],
+        conclusion: Atom("pizza_delicious"),
+        assumptions: [],
+        validation: Some(Invalid("Non sequitur")),
+        created_at: Some("2024-01-01"),
+        updated_at: Some("2024-01-01"),
+      ),
+      fallacy.NonSequitur,
+    ),
+  ]
 }
 
 // =============================================================================
