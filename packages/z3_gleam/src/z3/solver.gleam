@@ -40,6 +40,7 @@ import gleam/dict.{type Dict}
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
+import gleam/string
 import z3/types.{
   type CheckResult, type Expr, type Value, type Z3Error, Model, Sat, Unknown,
   Unsat,
@@ -72,8 +73,15 @@ type SolverScope {
 /// Solver configuration options
 pub type SolverConfig {
   SolverConfig(
-    /// Timeout in milliseconds (0 = no timeout)
+    /// Overall operation timeout in milliseconds (0 = no timeout)
+    /// This controls the port-level receive timeout
     timeout_ms: Int,
+    /// Z3 internal timeout in milliseconds (0 = no timeout)
+    /// This is passed directly to Z3 via solver.set("timeout", value)
+    z3_timeout: Int,
+    /// Z3 resource limit (0 = no limit)
+    /// Limits the computational resources Z3 can use
+    z3_rlimit: Int,
     /// Enable unsat core extraction
     unsat_core: Bool,
   )
@@ -120,17 +128,61 @@ pub fn new_with_config(config: SolverConfig) -> Result(Solver, Z3Error) {
 
 /// Get the default solver configuration
 pub fn default_config() -> SolverConfig {
-  SolverConfig(timeout_ms: 0, unsat_core: False)
+  SolverConfig(timeout_ms: 0, z3_timeout: 0, z3_rlimit: 0, unsat_core: False)
 }
 
 /// Create a configuration with a timeout
+/// Sets both the port-level timeout and Z3 internal timeout
 pub fn config_with_timeout(timeout_ms: Int) -> SolverConfig {
-  SolverConfig(timeout_ms: timeout_ms, unsat_core: False)
+  SolverConfig(
+    timeout_ms: timeout_ms,
+    z3_timeout: timeout_ms,
+    z3_rlimit: 0,
+    unsat_core: False,
+  )
+}
+
+/// Create a configuration with separate port and Z3 timeouts
+pub fn config_with_timeouts(
+  port_timeout_ms: Int,
+  z3_timeout_ms: Int,
+) -> SolverConfig {
+  SolverConfig(
+    timeout_ms: port_timeout_ms,
+    z3_timeout: z3_timeout_ms,
+    z3_rlimit: 0,
+    unsat_core: False,
+  )
+}
+
+/// Create a configuration with Z3 resource limit
+pub fn config_with_rlimit(rlimit: Int) -> SolverConfig {
+  SolverConfig(
+    timeout_ms: 0,
+    z3_timeout: 0,
+    z3_rlimit: rlimit,
+    unsat_core: False,
+  )
 }
 
 /// Create a configuration with unsat core extraction enabled
 pub fn config_with_unsat_core() -> SolverConfig {
-  SolverConfig(timeout_ms: 0, unsat_core: True)
+  SolverConfig(timeout_ms: 0, z3_timeout: 0, z3_rlimit: 0, unsat_core: True)
+}
+
+/// Create a full configuration with all options
+pub fn full_config(
+  timeout_ms: Int,
+  z3_timeout: Int,
+  z3_rlimit: Int,
+  unsat_core: Bool,
+) -> SolverConfig {
+  SolverConfig(
+    timeout_ms: timeout_ms,
+    z3_timeout: z3_timeout,
+    z3_rlimit: z3_rlimit,
+    unsat_core: unsat_core,
+  )
 }
 
 // =============================================================================
@@ -289,13 +341,14 @@ pub fn check_with_z3(
 fn do_check_with_z3(
   solver: Solver,
 ) -> Result(#(Solver, SolverCheckResult), Z3Error) {
-  // Import port driver functions
   // Start the port driver
   case start_port_driver() {
     Error(e) -> Error(e)
     Ok(port_handle) -> {
-      // Create Z3 context and solver
-      case create_z3_context_and_solver(port_handle) {
+      // Create Z3 context and solver with config
+      case
+        create_z3_context_and_solver_with_config(port_handle, solver.config)
+      {
         Error(e) -> {
           stop_port_driver(port_handle)
           Error(e)
@@ -334,6 +387,20 @@ fn do_check_with_z3(
   }
 }
 
+/// Check if a solver result indicates a timeout
+pub fn is_timeout(result: SolverCheckResult) -> Bool {
+  case result {
+    SolverUnknown(reason) ->
+      reason == "timeout"
+      || {
+        let lower_reason = string.lowercase(reason)
+        string.contains(lower_reason, "timeout")
+        || string.contains(lower_reason, "cancel")
+      }
+    _ -> False
+  }
+}
+
 // =============================================================================
 // Port Driver Integration (Internal)
 // =============================================================================
@@ -356,6 +423,12 @@ fn stop_port_driver(handle: PortDriverHandle) -> Nil
 @external(erlang, "z3_solver_ffi", "create_context_and_solver")
 fn create_z3_context_and_solver(
   handle: PortDriverHandle,
+) -> Result(#(PortDriverHandle, Z3ContextHandle, Z3SolverHandle), Z3Error)
+
+@external(erlang, "z3_solver_ffi", "create_context_and_solver_with_config")
+fn create_z3_context_and_solver_with_config(
+  handle: PortDriverHandle,
+  config: SolverConfig,
 ) -> Result(#(PortDriverHandle, Z3ContextHandle, Z3SolverHandle), Z3Error)
 
 @external(erlang, "z3_solver_ffi", "assert_expressions")

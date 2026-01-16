@@ -4,7 +4,11 @@
 
 -module(z3_solver_ffi).
 -export([start_port/0, stop_port/1, create_context_and_solver/1,
-         assert_expressions/3, check_sat/2]).
+         create_context_and_solver_with_config/2,
+         assert_expressions/3, check_sat/2, check_sat_with_timeout/3]).
+
+%% Default timeout for port communication (30 seconds)
+-define(DEFAULT_TIMEOUT, 30000).
 
 %% @doc Start the Z3 port driver
 start_port() ->
@@ -54,31 +58,41 @@ stop_port(Port) ->
 
 %% @doc Create a Z3 context and solver
 create_context_and_solver(Port) ->
+    create_context_and_solver_with_config(Port, {solver_config, 0, 0, 0, false}).
+
+%% @doc Create a Z3 context and solver with configuration
+%% Config is {solver_config, TimeoutMs, Z3Timeout, Z3Rlimit, UnsatCore}
+create_context_and_solver_with_config(Port, Config) ->
+    {solver_config, _TimeoutMs, Z3Timeout, Z3Rlimit, _UnsatCore} = Config,
     %% Create context
     CtxRequest = <<"{\"id\":1,\"cmd\":\"new_context\"}\n">>,
     erlang:port_command(Port, CtxRequest),
-    case receive_json_response(Port) of
+    case receive_json_response(Port, ?DEFAULT_TIMEOUT) of
         {ok, CtxResponse} ->
             CtxId = extract_int(CtxResponse, <<"context_id">>),
             case CtxId of
                 undefined ->
                     {error, {parse_error, <<"Missing context_id in response">>}};
                 _ ->
-                    %% Create solver
+                    %% Create solver with timeout config
                     SolverRequest = iolist_to_binary([
                         <<"{\"id\":2,\"cmd\":\"new_solver\",\"context_id\":">>,
                         integer_to_binary(CtxId),
+                        <<",\"z3_timeout\":">>,
+                        integer_to_binary(Z3Timeout),
+                        <<",\"z3_rlimit\":">>,
+                        integer_to_binary(Z3Rlimit),
                         <<"}\n">>
                     ]),
                     erlang:port_command(Port, SolverRequest),
-                    case receive_json_response(Port) of
+                    case receive_json_response(Port, ?DEFAULT_TIMEOUT) of
                         {ok, SolverResponse} ->
                             SolverId = extract_int(SolverResponse, <<"solver_id">>),
                             case SolverId of
                                 undefined ->
                                     {error, {parse_error, <<"Missing solver_id in response">>}};
                                 _ ->
-                                    {ok, {Port, {context, CtxId}, {solver, SolverId, CtxId}}}
+                                    {ok, {Port, {context, CtxId}, {solver, SolverId, CtxId, Config}}}
                             end;
                         {error, Reason} ->
                             {error, Reason}
@@ -89,12 +103,17 @@ create_context_and_solver(Port) ->
     end.
 
 %% @doc Assert expressions to Z3 solver
-assert_expressions(Port, {solver, SolverId, CtxId}, Exprs) ->
-    assert_expressions_loop(Port, SolverId, CtxId, Exprs, 3).
+assert_expressions(Port, SolverTuple, Exprs) ->
+    %% Extract solver info and timeout from tuple (handle both old and new formats)
+    {SolverId, CtxId, Timeout} = case SolverTuple of
+        {solver, S, C, {solver_config, T, _, _, _}} -> {S, C, T};
+        {solver, S, C} -> {S, C, ?DEFAULT_TIMEOUT}
+    end,
+    assert_expressions_loop(Port, SolverId, CtxId, Exprs, 3, Timeout).
 
-assert_expressions_loop(Port, _SolverId, _CtxId, [], _ReqId) ->
+assert_expressions_loop(Port, _SolverId, _CtxId, [], _ReqId, _Timeout) ->
     {ok, Port};
-assert_expressions_loop(Port, SolverId, CtxId, [Expr | Rest], ReqId) ->
+assert_expressions_loop(Port, SolverId, CtxId, [Expr | Rest], ReqId, Timeout) ->
     ExprJson = compile_expr(Expr),
     Request = iolist_to_binary([
         <<"{\"id\":">>, integer_to_binary(ReqId),
@@ -104,25 +123,41 @@ assert_expressions_loop(Port, SolverId, CtxId, [Expr | Rest], ReqId) ->
         <<"}\n">>
     ]),
     erlang:port_command(Port, Request),
-    case receive_json_response(Port) of
+    case receive_json_response(Port, Timeout) of
         {ok, _Response} ->
-            assert_expressions_loop(Port, SolverId, CtxId, Rest, ReqId + 1);
+            assert_expressions_loop(Port, SolverId, CtxId, Rest, ReqId + 1, Timeout);
         {error, Reason} ->
             {error, Reason}
     end.
 
 %% @doc Check satisfiability
-check_sat(Port, {solver, SolverId, _CtxId}) ->
+check_sat(Port, SolverTuple) ->
+    %% Extract solver info and timeout from tuple (handle both old and new formats)
+    {SolverId, Timeout} = case SolverTuple of
+        {solver, S, _, {solver_config, T, _, _, _}} -> {S, T};
+        {solver, S, _} -> {S, ?DEFAULT_TIMEOUT}
+    end,
+    check_sat_with_timeout(Port, SolverTuple, Timeout).
+
+%% @doc Check satisfiability with explicit timeout
+check_sat_with_timeout(Port, SolverTuple, Timeout) ->
+    SolverId = case SolverTuple of
+        {solver, S, _, _} -> S;
+        {solver, S, _} -> S
+    end,
     Request = iolist_to_binary([
         <<"{\"id\":1000,\"cmd\":\"check\",\"solver_id\":">>,
         integer_to_binary(SolverId),
         <<"}\n">>
     ]),
     erlang:port_command(Port, Request),
-    case receive_json_response(Port) of
+    case receive_json_response(Port, Timeout) of
         {ok, Response} ->
             Result = parse_check_result(Port, SolverId, Response),
             {ok, {Port, Result}};
+        {error, {timeout_error, _}} ->
+            %% Return a solver_unknown result on port timeout
+            {ok, {Port, {solver_unknown, <<"timeout">>}}};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -152,8 +187,16 @@ find_existing_file([Path | Rest]) ->
         false -> find_existing_file(Rest)
     end.
 
-%% @doc Receive a JSON response from the port
+%% @doc Receive a JSON response from the port with default timeout
 receive_json_response(Port) ->
+    receive_json_response(Port, ?DEFAULT_TIMEOUT).
+
+%% @doc Receive a JSON response from the port with configurable timeout
+receive_json_response(Port, Timeout) ->
+    EffectiveTimeout = case Timeout of
+        0 -> ?DEFAULT_TIMEOUT;  % Use default if 0
+        _ -> Timeout
+    end,
     receive
         {Port, {data, {eol, Line}}} ->
             case binary:match(Line, <<"\"error\"">>) of
@@ -164,8 +207,8 @@ receive_json_response(Port) ->
             {error, {port_error, list_to_binary(io_lib:format("Port exited with status ~p", [Status]))}};
         Other ->
             {error, {port_error, list_to_binary(io_lib:format("Unexpected message: ~p", [Other]))}}
-    after 30000 ->
-        {error, {timeout_error, 30000}}
+    after EffectiveTimeout ->
+        {error, {timeout_error, EffectiveTimeout}}
     end.
 
 %% @doc Extract an integer value from JSON binary by key
@@ -200,12 +243,29 @@ parse_check_result(Port, SolverId, Response) ->
             case binary:match(Response, <<"\"result\":\"unsat\"">>) of
                 {_, _} -> solver_unsat;
                 nomatch ->
-                    %% Unknown or error
+                    %% Unknown or error - check if it's a timeout
                     Reason = extract_string(Response, <<"reason">>),
-                    {solver_unknown, case Reason of
+                    IsTimeout = case binary:match(Response, <<"\"timeout\":true">>) of
+                        {_, _} -> true;
+                        nomatch ->
+                            %% Also check if reason contains timeout-related keywords
+                            case Reason of
+                                undefined -> false;
+                                R ->
+                                    LowerReason = string:lowercase(binary_to_list(R)),
+                                    lists:any(fun(Keyword) ->
+                                        string:find(LowerReason, Keyword) =/= nomatch
+                                    end, ["timeout", "canceled", "cancelled"])
+                            end
+                    end,
+                    ReasonStr = case Reason of
                         undefined -> <<"Unknown reason">>;
-                        R -> R
-                    end}
+                        R2 -> R2
+                    end,
+                    case IsTimeout of
+                        true -> {solver_unknown, <<"timeout">>};
+                        false -> {solver_unknown, ReasonStr}
+                    end
             end
     end.
 
@@ -242,6 +302,37 @@ get_model(Port, SolverId) ->
             #{};
         {error, _} ->
             #{}
+    end.
+
+%% @doc Delete a solver to free resources
+delete_solver(Port, SolverId) ->
+    Request = iolist_to_binary([
+        <<"{\"id\":2000,\"cmd\":\"del_solver\",\"solver_id\":">>,
+        integer_to_binary(SolverId),
+        <<"}\n">>
+    ]),
+    erlang:port_command(Port, Request),
+    receive_json_response(Port, 5000),
+    ok.
+
+%% @doc Delete a context to free resources
+delete_context(Port, CtxId) ->
+    Request = iolist_to_binary([
+        <<"{\"id\":2001,\"cmd\":\"del_context\",\"context_id\":">>,
+        integer_to_binary(CtxId),
+        <<"}\n">>
+    ]),
+    erlang:port_command(Port, Request),
+    receive_json_response(Port, 5000),
+    ok.
+
+%% @doc Cleanup solver and context resources (called on error)
+cleanup_resources(Port, SolverId, CtxId) ->
+    try
+        delete_solver(Port, SolverId),
+        delete_context(Port, CtxId)
+    catch
+        _:_ -> ok  % Ignore cleanup errors
     end.
 
 %% @doc Compile a Gleam expression to JSON string
