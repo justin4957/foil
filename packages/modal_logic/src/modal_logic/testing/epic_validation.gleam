@@ -27,6 +27,7 @@ import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/result
 import gleam/string
 import modal_logic/argument.{type Formalization, Formalization, Invalid, Valid}
 import modal_logic/confidence
@@ -37,6 +38,7 @@ import modal_logic/proposition.{
   type Proposition, And, Atom, Implies, K, Necessary, Not, Or, Possible, S4, S5,
   T,
 }
+import modal_logic/reason_chain
 
 // =============================================================================
 // Types
@@ -536,23 +538,14 @@ fn bool_to_int(b: Bool) -> Int {
 }
 
 // =============================================================================
-// Phase B: Reason Chain Analysis (Placeholder)
+// Phase B: Reason Chain Analysis
 // =============================================================================
 
 fn validate_phase_b(config: EpicValidationConfig) -> PhaseValidationResult {
   let metrics = [
-    placeholder_metric(
-      "reason_chain_parsing",
-      85.0,
-      "Reason chain parsing accuracy",
-      config.accuracy_samples,
-    ),
-    placeholder_metric(
-      "step_trace_completeness",
-      90.0,
-      "Step trace completeness",
-      config.accuracy_samples,
-    ),
+    validate_reason_chain_parsing(config.accuracy_samples),
+    validate_reason_type_classification(config.accuracy_samples),
+    validate_assumption_detection(config.accuracy_samples),
     placeholder_metric(
       "fallacy_detection_precision",
       90.0,
@@ -561,16 +554,213 @@ fn validate_phase_b(config: EpicValidationConfig) -> PhaseValidationResult {
     ),
   ]
 
+  let all_passed = list.all(metrics, fn(m) { m.passed })
+
   PhaseValidationResult(
     phase: PhaseB,
     name: "Reason Chain Analysis",
     metrics: metrics,
-    passed: False,
-    // Not yet implemented
-    duration_ms: 0,
+    passed: all_passed,
+    duration_ms: calculate_total_duration(metrics),
     issues: [147, 148, 149],
-    completed_issues: [],
+    completed_issues: [147],
   )
+}
+
+/// Validate reason chain parsing accuracy
+///
+/// Tests that natural language reasoning can be parsed into structured chains.
+pub fn validate_reason_chain_parsing(sample_size: Int) -> MetricResult {
+  let test_cases = generate_reason_chain_test_cases(sample_size)
+  let rc_config = reason_chain.default_config()
+
+  let successful_parses =
+    test_cases
+    |> list.count(fn(text) {
+      case reason_chain.parse_reason_chain(text, rc_config) {
+        Ok(chain) -> list.length(chain.reasons) > 0
+        Error(_) -> False
+      }
+    })
+
+  let accuracy =
+    int.to_float(successful_parses) /. int.to_float(sample_size) *. 100.0
+
+  MetricResult(
+    name: "reason_chain_parsing",
+    target: 85.0,
+    actual: accuracy,
+    passed: accuracy >=. 85.0,
+    samples: sample_size,
+    unit: "%",
+    details: Some(
+      "Percentage of natural language inputs successfully parsed into reason chains. "
+      <> int.to_string(successful_parses)
+      <> "/"
+      <> int.to_string(sample_size)
+      <> " parsed successfully.",
+    ),
+  )
+}
+
+/// Validate reason type classification accuracy
+///
+/// Tests that reasons are correctly classified by type.
+pub fn validate_reason_type_classification(sample_size: Int) -> MetricResult {
+  let test_cases = generate_typed_reason_test_cases(sample_size)
+  let rc_config = reason_chain.default_config()
+
+  let correct_classifications =
+    test_cases
+    |> list.count(fn(test_case) {
+      let #(text, expected_type) = test_case
+      case reason_chain.parse_reason_chain(text, rc_config) {
+        Ok(chain) -> {
+          case chain.reasons {
+            [r, ..] -> {
+              let actual_type =
+                reason_chain.reason_type_to_string(r.reason_type)
+              string.contains(actual_type, expected_type)
+            }
+            [] -> False
+          }
+        }
+        Error(_) -> False
+      }
+    })
+
+  let accuracy =
+    int.to_float(correct_classifications) /. int.to_float(sample_size) *. 100.0
+
+  MetricResult(
+    name: "reason_type_classification",
+    target: 80.0,
+    actual: accuracy,
+    passed: accuracy >=. 80.0,
+    samples: sample_size,
+    unit: "%",
+    details: Some(
+      "Percentage of reasons correctly classified by type. "
+      <> int.to_string(correct_classifications)
+      <> "/"
+      <> int.to_string(sample_size)
+      <> " classified correctly.",
+    ),
+  )
+}
+
+/// Validate implicit assumption detection
+///
+/// Tests that implicit assumptions are detected in reasoning.
+pub fn validate_assumption_detection(sample_size: Int) -> MetricResult {
+  let test_cases = generate_assumption_test_cases(sample_size)
+  let rc_config = reason_chain.default_config()
+
+  let detected_assumptions =
+    test_cases
+    |> list.count(fn(text) {
+      case reason_chain.parse_reason_chain(text, rc_config) {
+        Ok(chain) -> list.length(chain.implicit_assumptions) > 0
+        Error(_) -> False
+      }
+    })
+
+  let accuracy =
+    int.to_float(detected_assumptions) /. int.to_float(sample_size) *. 100.0
+
+  MetricResult(
+    name: "assumption_detection",
+    target: 70.0,
+    actual: accuracy,
+    passed: accuracy >=. 70.0,
+    samples: sample_size,
+    unit: "%",
+    details: Some(
+      "Percentage of cases where implicit assumptions were detected. "
+      <> int.to_string(detected_assumptions)
+      <> "/"
+      <> int.to_string(sample_size)
+      <> " had assumptions detected.",
+    ),
+  )
+}
+
+/// Generate test cases for reason chain parsing
+fn generate_reason_chain_test_cases(count: Int) -> List(String) {
+  let base_cases = [
+    "The project will succeed because the team is experienced.",
+    "Sales will increase because marketing is effective and demand is high.",
+    "The stock will rise because earnings beat expectations and market sentiment is positive.",
+    "We should invest because returns typically exceed inflation.",
+    "The conclusion follows because we know the premises are true.",
+    "Action is required because we must fulfill our obligations.",
+    "This must be true because it necessarily follows from the axioms.",
+    "The market will recover because it usually does after corrections.",
+  ]
+
+  replicate_string_cases(base_cases, count)
+}
+
+/// Generate test cases with expected types
+fn generate_typed_reason_test_cases(count: Int) -> List(#(String, String)) {
+  let base_cases = [
+    #("The result follows because A is true.", "Factual"),
+    #("X happens because if Y then Z.", "Causal"),
+    #("We act because we know the facts.", "Epistemic"),
+    #("Action is needed because we should comply.", "Deontic"),
+    #("It must be so because it is necessarily true.", "Modal"),
+    #("Sales rise because demand typically increases.", "Causal"),
+  ]
+
+  replicate_typed_cases(base_cases, count)
+}
+
+/// Generate test cases that should have assumptions detected
+fn generate_assumption_test_cases(count: Int) -> List(String) {
+  let base_cases = [
+    // Should detect probabilistic assumption
+    "Prices will rise because they usually do in this season.",
+    // Should detect epistemic assumption
+    "We should act because we know the facts are correct.",
+    // Should detect causal assumption
+    "Success will follow because hard work leads to results.",
+    // Plain factual - may not have assumptions
+    "The door is open because someone unlocked it.",
+  ]
+
+  replicate_string_cases(base_cases, count)
+}
+
+/// Replicate string test cases
+fn replicate_string_cases(
+  cases: List(String),
+  target_count: Int,
+) -> List(String) {
+  case list.length(cases) {
+    0 -> []
+    n -> {
+      let repeat_count = { target_count / n } + 1
+      cases
+      |> list.flat_map(fn(c) { list.repeat(c, repeat_count) })
+      |> list.take(target_count)
+    }
+  }
+}
+
+/// Replicate typed test cases
+fn replicate_typed_cases(
+  cases: List(#(String, String)),
+  target_count: Int,
+) -> List(#(String, String)) {
+  case list.length(cases) {
+    0 -> []
+    n -> {
+      let repeat_count = { target_count / n } + 1
+      cases
+      |> list.flat_map(fn(c) { list.repeat(c, repeat_count) })
+      |> list.take(target_count)
+    }
+  }
 }
 
 // =============================================================================
