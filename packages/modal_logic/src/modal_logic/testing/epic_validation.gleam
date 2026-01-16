@@ -23,6 +23,7 @@
 //// let report = generate_progress_report([result])
 //// ```
 
+import gleam/dict
 import gleam/float
 import gleam/int
 import gleam/list
@@ -35,6 +36,7 @@ import modal_logic/fallacy
 import modal_logic/heuristics.{
   type ValidationTier, Tier1Syntactic, Tier2TruthTable, Tier3Z3,
 }
+import modal_logic/multi_system
 import modal_logic/proposition.{
   type Proposition, And, Atom, Implies, K, Necessary, Not, Or, Possible, S4, S5,
   T,
@@ -1013,34 +1015,260 @@ fn generate_fallacy_test_cases() -> List(#(Formalization, fallacy.FallacyType)) 
 }
 
 // =============================================================================
-// Phase C: Multi-System Comparison (Placeholder)
+// Phase C: Multi-System Comparison
 // =============================================================================
 
 fn validate_phase_c(config: EpicValidationConfig) -> PhaseValidationResult {
   let metrics = [
-    placeholder_metric(
-      "parallel_validation_throughput",
-      100.0,
-      "Parallel validation throughput (formulas/sec)",
-      config.accuracy_samples,
-    ),
-    placeholder_metric(
-      "cross_system_consistency",
-      95.0,
-      "Cross-system consistency",
-      config.accuracy_samples,
-    ),
+    validate_parallel_multi_system(config.accuracy_samples),
+    validate_system_comparison_accuracy(config.accuracy_samples),
+    validate_system_recommendation(config.accuracy_samples),
   ]
+
+  let all_passed = list.all(metrics, fn(m) { m.passed })
 
   PhaseValidationResult(
     phase: PhaseC,
     name: "Multi-System Comparison",
     metrics: metrics,
-    passed: False,
-    duration_ms: 0,
+    passed: all_passed,
+    duration_ms: calculate_total_duration(metrics),
     issues: [150],
-    completed_issues: [],
+    completed_issues: [150],
   )
+}
+
+/// Validate parallel multi-system validation
+///
+/// Tests that formulas can be validated across all 7 systems.
+pub fn validate_parallel_multi_system(sample_size: Int) -> MetricResult {
+  let test_cases = generate_multi_system_test_cases()
+
+  let successful_validations =
+    test_cases
+    |> list.count(fn(formalization) {
+      let result =
+        multi_system.validate_multi_system(
+          formalization,
+          multi_system.default_config(),
+        )
+      // Should have results for all 7 systems
+      dict.size(result.results) == 7
+    })
+
+  let accuracy =
+    int.to_float(successful_validations)
+    /. int.to_float(list.length(test_cases))
+    *. 100.0
+
+  MetricResult(
+    name: "parallel_multi_system_validation",
+    target: 100.0,
+    actual: accuracy,
+    passed: accuracy >=. 100.0,
+    samples: list.length(test_cases),
+    unit: "%",
+    details: Some(
+      "Percentage of formalizations validated across all 7 systems. "
+      <> int.to_string(successful_validations)
+      <> "/"
+      <> int.to_string(list.length(test_cases))
+      <> " validated successfully.",
+    ),
+  )
+}
+
+/// Validate system comparison accuracy
+///
+/// Tests that validity differences between systems are correctly identified.
+pub fn validate_system_comparison_accuracy(sample_size: Int) -> MetricResult {
+  let test_cases = generate_frame_dependent_test_cases()
+
+  let correct_comparisons =
+    test_cases
+    |> list.count(fn(test_case) {
+      let #(formalization, expected_pattern) = test_case
+      let result =
+        multi_system.validate_multi_system(
+          formalization,
+          multi_system.default_config(),
+        )
+
+      // Check if the expected validity pattern matches
+      case expected_pattern {
+        "mixed" ->
+          case result.comparison.consensus {
+            multi_system.Mixed(_, _) -> True
+            _ -> False
+          }
+        "all_valid" ->
+          case result.comparison.consensus {
+            multi_system.AllValid -> True
+            _ -> False
+          }
+        "all_invalid" ->
+          case result.comparison.consensus {
+            multi_system.AllInvalid -> True
+            _ -> False
+          }
+        _ -> True
+      }
+    })
+
+  let accuracy =
+    int.to_float(correct_comparisons)
+    /. int.to_float(list.length(test_cases))
+    *. 100.0
+
+  MetricResult(
+    name: "system_comparison_accuracy",
+    target: 80.0,
+    actual: accuracy,
+    passed: accuracy >=. 80.0,
+    samples: list.length(test_cases),
+    unit: "%",
+    details: Some(
+      "Percentage of cross-system comparisons correct. "
+      <> int.to_string(correct_comparisons)
+      <> "/"
+      <> int.to_string(list.length(test_cases))
+      <> " comparisons correct.",
+    ),
+  )
+}
+
+/// Validate system recommendation
+///
+/// Tests that system recommendations are generated with explanations.
+pub fn validate_system_recommendation(sample_size: Int) -> MetricResult {
+  let test_cases = generate_multi_system_test_cases()
+
+  let valid_recommendations =
+    test_cases
+    |> list.count(fn(formalization) {
+      let result =
+        multi_system.validate_multi_system(
+          formalization,
+          multi_system.default_config(),
+        )
+
+      // Should have a recommendation reason
+      string.length(result.recommendation_reason) > 10
+    })
+
+  let accuracy =
+    int.to_float(valid_recommendations)
+    /. int.to_float(list.length(test_cases))
+    *. 100.0
+
+  MetricResult(
+    name: "system_recommendation_quality",
+    target: 95.0,
+    actual: accuracy,
+    passed: accuracy >=. 95.0,
+    samples: list.length(test_cases),
+    unit: "%",
+    details: Some(
+      "Percentage of validations with quality recommendations. "
+      <> int.to_string(valid_recommendations)
+      <> "/"
+      <> int.to_string(list.length(test_cases))
+      <> " have recommendations.",
+    ),
+  )
+}
+
+/// Generate test cases for multi-system validation
+fn generate_multi_system_test_cases() -> List(Formalization) {
+  [
+    // T-axiom: □p → p (valid in T, S4, S5, invalid in K, KD)
+    Formalization(
+      id: "multi_t_axiom",
+      argument_id: "t_axiom",
+      logic_system: K,
+      premises: [Necessary(Atom("p"))],
+      conclusion: Atom("p"),
+      assumptions: [],
+      validation: None,
+      created_at: Some("2024-01-01"),
+      updated_at: Some("2024-01-01"),
+    ),
+    // Modus ponens (valid in all systems)
+    Formalization(
+      id: "multi_modus_ponens",
+      argument_id: "modus_ponens",
+      logic_system: K,
+      premises: [Implies(Atom("p"), Atom("q")), Atom("p")],
+      conclusion: Atom("q"),
+      assumptions: [],
+      validation: None,
+      created_at: Some("2024-01-01"),
+      updated_at: Some("2024-01-01"),
+    ),
+    // Identity (valid in all systems)
+    Formalization(
+      id: "multi_identity",
+      argument_id: "identity",
+      logic_system: K,
+      premises: [Atom("p")],
+      conclusion: Atom("p"),
+      assumptions: [],
+      validation: None,
+      created_at: Some("2024-01-01"),
+      updated_at: Some("2024-01-01"),
+    ),
+  ]
+}
+
+/// Generate test cases with expected validity patterns
+fn generate_frame_dependent_test_cases() -> List(#(Formalization, String)) {
+  [
+    // T-axiom shows mixed validity
+    #(
+      Formalization(
+        id: "frame_t_axiom",
+        argument_id: "t_axiom",
+        logic_system: K,
+        premises: [Necessary(Atom("p"))],
+        conclusion: Atom("p"),
+        assumptions: [],
+        validation: None,
+        created_at: Some("2024-01-01"),
+        updated_at: Some("2024-01-01"),
+      ),
+      "mixed",
+    ),
+    // Modus ponens is valid in all
+    #(
+      Formalization(
+        id: "frame_modus_ponens",
+        argument_id: "modus_ponens",
+        logic_system: K,
+        premises: [Implies(Atom("p"), Atom("q")), Atom("p")],
+        conclusion: Atom("q"),
+        assumptions: [],
+        validation: None,
+        created_at: Some("2024-01-01"),
+        updated_at: Some("2024-01-01"),
+      ),
+      "all_valid",
+    ),
+    // Affirming consequent is invalid in all
+    #(
+      Formalization(
+        id: "frame_affirm_cons",
+        argument_id: "affirm_cons",
+        logic_system: K,
+        premises: [Implies(Atom("p"), Atom("q")), Atom("q")],
+        conclusion: Atom("p"),
+        assumptions: [],
+        validation: None,
+        created_at: Some("2024-01-01"),
+        updated_at: Some("2024-01-01"),
+      ),
+      "all_invalid",
+    ),
+  ]
 }
 
 // =============================================================================
