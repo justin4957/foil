@@ -29,6 +29,9 @@ import modal_logic/argument.{
   type Formalization, type ValidationResult, Invalid, Valid,
 }
 import modal_logic/cache.{type CacheConfig, type MemoryCache}
+import modal_logic/confidence.{
+  type ConfidenceContext, type ConfidenceResult, type ScoredValidationResult,
+}
 import modal_logic/heuristics.{
   type HeuristicConfig, type HeuristicResult, type ValidationTier,
   Tier1Syntactic, Tier2TruthTable, Tier3Z3,
@@ -107,6 +110,24 @@ pub type ValidationResponse {
     tier_used: Option(ValidationTier),
     /// Explanation of how result was determined (for heuristic tiers)
     tier_explanation: Option(String),
+  )
+}
+
+/// Extended validation response with confidence scoring
+pub type ScoredValidationResponse {
+  ScoredValidationResponse(
+    /// Request ID
+    request_id: String,
+    /// The validation result with confidence
+    scored_result: ScoredValidationResult,
+    /// Whether result came from cache
+    from_cache: Bool,
+    /// Time taken in milliseconds
+    duration_ms: Int,
+    /// Number of worlds explored (if applicable)
+    worlds_explored: Option(Int),
+    /// SMT-LIB formula used (for debugging)
+    smt_formula: Option(String),
   )
 }
 
@@ -436,6 +457,138 @@ pub fn validate_request(
       #(new_state, response)
     }
   }
+}
+
+/// Validate a request and return confidence-scored result
+///
+/// This function extends the standard validation with confidence scoring,
+/// providing a 0.0-1.0 confidence score along with factors explaining
+/// how the score was computed.
+///
+/// ## Example
+/// ```gleam
+/// let #(state, response) = validator.validate_with_confidence(state, request, time)
+/// // response.scored_result.confidence.score is 0.0 to 1.0
+/// // response.scored_result.confidence.factors explains the breakdown
+/// ```
+pub fn validate_with_confidence(
+  state: ValidatorState,
+  request: ValidationRequest,
+  current_time: Int,
+) -> #(ValidatorState, ScoredValidationResponse) {
+  // First run standard validation
+  let #(new_state, response) = validate_request(state, request, current_time)
+
+  // Build confidence context from validation metadata
+  let tier = case response.tier_used {
+    Some(t) -> t
+    None -> Tier3Z3
+  }
+
+  let z3_timeout = case response.result {
+    argument.Timeout -> True
+    _ -> False
+  }
+
+  let world_bound_hit = case response.worlds_explored {
+    Some(explored) -> explored >= new_state.config.max_worlds
+    None -> False
+  }
+
+  let context =
+    confidence.ConfidenceContext(
+      tier_used: tier,
+      z3_timeout: z3_timeout,
+      world_bound_hit: world_bound_hit,
+      worlds_explored: response.worlds_explored,
+      max_worlds: Some(new_state.config.max_worlds),
+      variable_count: None,
+      frame_complete: !world_bound_hit,
+      tier_explanation: response.tier_explanation,
+    )
+
+  // Compute confidence
+  let confidence_result =
+    confidence.compute_confidence(response.result, context)
+
+  // Create scored validation result
+  let scored_result =
+    confidence.ScoredValidationResult(
+      result: response.result,
+      confidence: confidence_result,
+      tier_used: tier,
+      tier_explanation: response.tier_explanation,
+    )
+
+  // Build scored response
+  let scored_response =
+    ScoredValidationResponse(
+      request_id: response.request_id,
+      scored_result: scored_result,
+      from_cache: response.from_cache,
+      duration_ms: response.duration_ms,
+      worlds_explored: response.worlds_explored,
+      smt_formula: response.smt_formula,
+    )
+
+  #(new_state, scored_response)
+}
+
+/// Validate a formalization with confidence scoring
+///
+/// Convenience function that wraps the formalization in a request.
+pub fn validate_scored(
+  state: ValidatorState,
+  formalization: Formalization,
+  current_time: Int,
+) -> #(ValidatorState, ScoredValidationResponse) {
+  let request =
+    ValidationRequest(
+      id: formalization.id,
+      formalization: formalization,
+      priority: 0,
+      callback_id: None,
+    )
+
+  validate_with_confidence(state, request, current_time)
+}
+
+/// Get the confidence result from a standard validation response
+///
+/// This is useful when you have already run validation and want
+/// to retroactively compute confidence for the result.
+pub fn compute_response_confidence(
+  response: ValidationResponse,
+  max_worlds: Int,
+) -> ConfidenceResult {
+  let tier = case response.tier_used {
+    Some(t) -> t
+    None -> Tier3Z3
+  }
+
+  let z3_timeout = case response.result {
+    argument.Timeout -> True
+    _ -> False
+  }
+
+  let world_bound_hit = case response.worlds_explored {
+    Some(explored) -> explored >= max_worlds
+    None -> False
+  }
+
+  let context =
+    confidence.ConfidenceContext(
+      tier_used: tier,
+      z3_timeout: z3_timeout,
+      world_bound_hit: world_bound_hit,
+      worlds_explored: response.worlds_explored,
+      max_worlds: Some(max_worlds),
+      variable_count: None,
+      frame_complete: !world_bound_hit,
+      tier_explanation: response.tier_explanation,
+    )
+
+  confidence.compute_confidence(response.result, context)
 }
 
 /// Validate a batch of formalizations
