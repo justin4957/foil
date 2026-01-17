@@ -717,6 +717,14 @@ fn collect_prop_atoms(prop: Proposition) -> List(String) {
     proposition.Permitted(inner) -> collect_prop_atoms(inner)
     proposition.Knows(_, inner) -> collect_prop_atoms(inner)
     proposition.Believes(_, inner) -> collect_prop_atoms(inner)
+    // Probabilistic operators
+    proposition.Probable(inner) -> collect_prop_atoms(inner)
+    proposition.ProbAtLeast(inner, _) -> collect_prop_atoms(inner)
+    proposition.ProbAtMost(inner, _) -> collect_prop_atoms(inner)
+    proposition.ProbExact(inner, _) -> collect_prop_atoms(inner)
+    proposition.ProbRange(inner, _, _) -> collect_prop_atoms(inner)
+    proposition.CondProb(cons, ante, _) ->
+      list.append(collect_prop_atoms(cons), collect_prop_atoms(ante))
   }
 }
 
@@ -822,6 +830,29 @@ fn prop_to_smt(prop: Proposition, world: String) -> String {
 
     proposition.Believes(agent, inner) ->
       "(B_" <> agent <> " " <> prop_to_smt(inner, world) <> ")"
+
+    // Probabilistic operators - simplified SMT representation
+    proposition.Probable(inner) ->
+      "; Probable: P > 0.5\n(P_gt_0.5 " <> prop_to_smt(inner, world) <> ")"
+
+    proposition.ProbAtLeast(inner, _threshold) ->
+      "; ProbAtLeast\n(P_geq " <> prop_to_smt(inner, world) <> ")"
+
+    proposition.ProbAtMost(inner, _threshold) ->
+      "; ProbAtMost\n(P_leq " <> prop_to_smt(inner, world) <> ")"
+
+    proposition.ProbExact(inner, _probability) ->
+      "; ProbExact\n(P_eq " <> prop_to_smt(inner, world) <> ")"
+
+    proposition.ProbRange(inner, _, _) ->
+      "; ProbRange\n(P_range " <> prop_to_smt(inner, world) <> ")"
+
+    proposition.CondProb(cons, ante, _probability) ->
+      "; CondProb\n(P_cond "
+      <> prop_to_smt(cons, world)
+      <> " "
+      <> prop_to_smt(ante, world)
+      <> ")"
   }
 }
 
@@ -1421,6 +1452,25 @@ fn convert_proposition_to_z3(prop: Proposition) -> z3_compile.Proposition {
       z3_compile.Knows(agent, convert_proposition_to_z3(inner))
     proposition.Believes(agent, inner) ->
       z3_compile.Believes(agent, convert_proposition_to_z3(inner))
+    // Probabilistic operators - wrap inner proposition in a modal-like structure
+    // Note: Full probabilistic SMT encoding would require probability theory axioms
+    proposition.Probable(inner) ->
+      // Treat as modal operator for Z3 encoding purposes
+      z3_compile.Possible(convert_proposition_to_z3(inner))
+    proposition.ProbAtLeast(inner, _threshold) ->
+      z3_compile.Possible(convert_proposition_to_z3(inner))
+    proposition.ProbAtMost(inner, _threshold) ->
+      z3_compile.Possible(convert_proposition_to_z3(inner))
+    proposition.ProbExact(inner, _probability) ->
+      z3_compile.Possible(convert_proposition_to_z3(inner))
+    proposition.ProbRange(inner, _, _) ->
+      z3_compile.Possible(convert_proposition_to_z3(inner))
+    proposition.CondProb(cons, ante, _probability) ->
+      // Conditional probability as implication approximation
+      z3_compile.PropImplies(
+        convert_proposition_to_z3(ante),
+        convert_proposition_to_z3(cons),
+      )
   }
 }
 

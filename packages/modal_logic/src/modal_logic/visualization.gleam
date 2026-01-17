@@ -3,6 +3,7 @@
 //// Provides export functionality for Kripke models and analysis results
 //// in various formats: Mermaid, Graphviz, LaTeX, and Markdown.
 
+import gleam/float
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
@@ -762,6 +763,42 @@ pub fn proposition_to_latex(prop: Proposition) -> String {
     Knows(agent, inner) -> "K_{" <> agent <> "} " <> proposition_to_latex(inner)
     Believes(agent, inner) ->
       "B_{" <> agent <> "} " <> proposition_to_latex(inner)
+    // Probabilistic operators
+    proposition.Probable(inner) ->
+      "\\Pr_{>0.5}(" <> proposition_to_latex(inner) <> ")"
+    proposition.ProbAtLeast(inner, threshold) ->
+      "\\Pr_{\\geq "
+      <> float.to_string(threshold)
+      <> "}("
+      <> proposition_to_latex(inner)
+      <> ")"
+    proposition.ProbAtMost(inner, threshold) ->
+      "\\Pr_{\\leq "
+      <> float.to_string(threshold)
+      <> "}("
+      <> proposition_to_latex(inner)
+      <> ")"
+    proposition.ProbExact(inner, probability) ->
+      "\\Pr_{="
+      <> float.to_string(probability)
+      <> "}("
+      <> proposition_to_latex(inner)
+      <> ")"
+    proposition.ProbRange(inner, low, high) ->
+      "\\Pr_{["
+      <> float.to_string(low)
+      <> ","
+      <> float.to_string(high)
+      <> "]}("
+      <> proposition_to_latex(inner)
+      <> ")"
+    proposition.CondProb(cons, ante, probability) ->
+      "\\Pr("
+      <> proposition_to_latex(cons)
+      <> "|"
+      <> proposition_to_latex(ante)
+      <> ")="
+      <> float.to_string(probability)
   }
 }
 
@@ -796,6 +833,42 @@ pub fn proposition_to_unicode(prop: Proposition) -> String {
       "K_" <> agent <> "(" <> proposition_to_unicode(inner) <> ")"
     Believes(agent, inner) ->
       "B_" <> agent <> "(" <> proposition_to_unicode(inner) <> ")"
+    // Probabilistic operators
+    proposition.Probable(inner) ->
+      "Pr>0.5(" <> proposition_to_unicode(inner) <> ")"
+    proposition.ProbAtLeast(inner, threshold) ->
+      "P≥"
+      <> float.to_string(threshold)
+      <> "("
+      <> proposition_to_unicode(inner)
+      <> ")"
+    proposition.ProbAtMost(inner, threshold) ->
+      "P≤"
+      <> float.to_string(threshold)
+      <> "("
+      <> proposition_to_unicode(inner)
+      <> ")"
+    proposition.ProbExact(inner, probability) ->
+      "P="
+      <> float.to_string(probability)
+      <> "("
+      <> proposition_to_unicode(inner)
+      <> ")"
+    proposition.ProbRange(inner, low, high) ->
+      "P["
+      <> float.to_string(low)
+      <> ","
+      <> float.to_string(high)
+      <> "]("
+      <> proposition_to_unicode(inner)
+      <> ")"
+    proposition.CondProb(cons, ante, probability) ->
+      "P("
+      <> proposition_to_unicode(cons)
+      <> "|"
+      <> proposition_to_unicode(ante)
+      <> ")="
+      <> float.to_string(probability)
   }
 }
 
@@ -830,6 +903,42 @@ pub fn proposition_to_ascii(prop: Proposition) -> String {
       "K_" <> agent <> "(" <> proposition_to_ascii(inner) <> ")"
     Believes(agent, inner) ->
       "B_" <> agent <> "(" <> proposition_to_ascii(inner) <> ")"
+    // Probabilistic operators
+    proposition.Probable(inner) ->
+      "Pr>0.5(" <> proposition_to_ascii(inner) <> ")"
+    proposition.ProbAtLeast(inner, threshold) ->
+      "P>="
+      <> float.to_string(threshold)
+      <> "("
+      <> proposition_to_ascii(inner)
+      <> ")"
+    proposition.ProbAtMost(inner, threshold) ->
+      "P<="
+      <> float.to_string(threshold)
+      <> "("
+      <> proposition_to_ascii(inner)
+      <> ")"
+    proposition.ProbExact(inner, probability) ->
+      "P="
+      <> float.to_string(probability)
+      <> "("
+      <> proposition_to_ascii(inner)
+      <> ")"
+    proposition.ProbRange(inner, low, high) ->
+      "P["
+      <> float.to_string(low)
+      <> ","
+      <> float.to_string(high)
+      <> "]("
+      <> proposition_to_ascii(inner)
+      <> ")"
+    proposition.CondProb(cons, ante, probability) ->
+      "P("
+      <> proposition_to_ascii(cons)
+      <> "|"
+      <> proposition_to_ascii(ante)
+      <> ")="
+      <> float.to_string(probability)
   }
 }
 

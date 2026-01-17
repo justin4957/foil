@@ -132,6 +132,14 @@ fn calculate_modal_depth(formula: Proposition) -> Int {
     Necessary(p) | Possible(p) | Obligatory(p) | Permitted(p) ->
       1 + calculate_modal_depth(p)
     Knows(_, p) | Believes(_, p) -> 1 + calculate_modal_depth(p)
+    // Probabilistic operators are treated as modal operators
+    proposition.Probable(p) -> 1 + calculate_modal_depth(p)
+    proposition.ProbAtLeast(p, _) -> 1 + calculate_modal_depth(p)
+    proposition.ProbAtMost(p, _) -> 1 + calculate_modal_depth(p)
+    proposition.ProbExact(p, _) -> 1 + calculate_modal_depth(p)
+    proposition.ProbRange(p, _, _) -> 1 + calculate_modal_depth(p)
+    proposition.CondProb(cons, ante, _) ->
+      1 + int.max(calculate_modal_depth(cons), calculate_modal_depth(ante))
   }
 }
 
@@ -145,6 +153,14 @@ fn count_operators(formula: Proposition) -> Int {
     Necessary(p) | Possible(p) | Obligatory(p) | Permitted(p) ->
       1 + count_operators(p)
     Knows(_, p) | Believes(_, p) -> 1 + count_operators(p)
+    // Probabilistic operators
+    proposition.Probable(p) -> 1 + count_operators(p)
+    proposition.ProbAtLeast(p, _) -> 1 + count_operators(p)
+    proposition.ProbAtMost(p, _) -> 1 + count_operators(p)
+    proposition.ProbExact(p, _) -> 1 + count_operators(p)
+    proposition.ProbRange(p, _, _) -> 1 + count_operators(p)
+    proposition.CondProb(cons, ante, _) ->
+      1 + count_operators(cons) + count_operators(ante)
   }
 }
 
@@ -156,6 +172,13 @@ fn count_atoms(formula: Proposition) -> Int {
     And(p, q) | Or(p, q) | Implies(p, q) -> count_atoms(p) + count_atoms(q)
     Necessary(p) | Possible(p) | Obligatory(p) | Permitted(p) -> count_atoms(p)
     Knows(_, p) | Believes(_, p) -> count_atoms(p)
+    // Probabilistic operators
+    proposition.Probable(p) -> count_atoms(p)
+    proposition.ProbAtLeast(p, _) -> count_atoms(p)
+    proposition.ProbAtMost(p, _) -> count_atoms(p)
+    proposition.ProbExact(p, _) -> count_atoms(p)
+    proposition.ProbRange(p, _, _) -> count_atoms(p)
+    proposition.CondProb(cons, ante, _) -> count_atoms(cons) + count_atoms(ante)
   }
 }
 
@@ -169,6 +192,14 @@ fn count_total_nodes(formula: Proposition) -> Int {
     Necessary(p) | Possible(p) | Obligatory(p) | Permitted(p) ->
       1 + count_total_nodes(p)
     Knows(_, p) | Believes(_, p) -> 1 + count_total_nodes(p)
+    // Probabilistic operators
+    proposition.Probable(p) -> 1 + count_total_nodes(p)
+    proposition.ProbAtLeast(p, _) -> 1 + count_total_nodes(p)
+    proposition.ProbAtMost(p, _) -> 1 + count_total_nodes(p)
+    proposition.ProbExact(p, _) -> 1 + count_total_nodes(p)
+    proposition.ProbRange(p, _, _) -> 1 + count_total_nodes(p)
+    proposition.CondProb(cons, ante, _) ->
+      1 + count_total_nodes(cons) + count_total_nodes(ante)
   }
 }
 
@@ -182,6 +213,14 @@ fn calculate_nesting_level(formula: Proposition) -> Int {
     Necessary(p) | Possible(p) | Obligatory(p) | Permitted(p) ->
       1 + calculate_nesting_level(p)
     Knows(_, p) | Believes(_, p) -> 1 + calculate_nesting_level(p)
+    // Probabilistic operators
+    proposition.Probable(p) -> 1 + calculate_nesting_level(p)
+    proposition.ProbAtLeast(p, _) -> 1 + calculate_nesting_level(p)
+    proposition.ProbAtMost(p, _) -> 1 + calculate_nesting_level(p)
+    proposition.ProbExact(p, _) -> 1 + calculate_nesting_level(p)
+    proposition.ProbRange(p, _, _) -> 1 + calculate_nesting_level(p)
+    proposition.CondProb(cons, ante, _) ->
+      1 + int.max(calculate_nesting_level(cons), calculate_nesting_level(ante))
   }
 }
 
@@ -237,6 +276,14 @@ fn find_double_negation(formula: Proposition) -> List(Optimization) {
     Necessary(p) | Possible(p) | Obligatory(p) | Permitted(p) ->
       find_double_negation(p)
     Knows(_, p) | Believes(_, p) -> find_double_negation(p)
+    // Probabilistic operators
+    proposition.Probable(p) -> find_double_negation(p)
+    proposition.ProbAtLeast(p, _) -> find_double_negation(p)
+    proposition.ProbAtMost(p, _) -> find_double_negation(p)
+    proposition.ProbExact(p, _) -> find_double_negation(p)
+    proposition.ProbRange(p, _, _) -> find_double_negation(p)
+    proposition.CondProb(cons, ante, _) ->
+      list.append(find_double_negation(cons), find_double_negation(ante))
     Atom(_) -> []
   }
 }
@@ -270,6 +317,17 @@ fn find_necessitation_simplification(formula: Proposition) -> List(Optimization)
         find_necessitation_simplification(q),
       )
     Knows(_, p) | Believes(_, p) -> find_necessitation_simplification(p)
+    // Probabilistic operators
+    proposition.Probable(p) -> find_necessitation_simplification(p)
+    proposition.ProbAtLeast(p, _) -> find_necessitation_simplification(p)
+    proposition.ProbAtMost(p, _) -> find_necessitation_simplification(p)
+    proposition.ProbExact(p, _) -> find_necessitation_simplification(p)
+    proposition.ProbRange(p, _, _) -> find_necessitation_simplification(p)
+    proposition.CondProb(cons, ante, _) ->
+      list.append(
+        find_necessitation_simplification(cons),
+        find_necessitation_simplification(ante),
+      )
     Atom(_) -> []
   }
 }

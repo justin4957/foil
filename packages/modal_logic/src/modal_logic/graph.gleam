@@ -414,6 +414,13 @@ pub fn proposition_to_pattern(prop: Proposition) -> PropositionPattern {
     proposition.Permitted(inner) -> proposition_to_pattern(inner)
     proposition.Knows(_, inner) -> proposition_to_pattern(inner)
     proposition.Believes(_, inner) -> proposition_to_pattern(inner)
+    // Probabilistic operators - simplify to inner pattern
+    proposition.Probable(inner) -> proposition_to_pattern(inner)
+    proposition.ProbAtLeast(inner, _) -> proposition_to_pattern(inner)
+    proposition.ProbAtMost(inner, _) -> proposition_to_pattern(inner)
+    proposition.ProbExact(inner, _) -> proposition_to_pattern(inner)
+    proposition.ProbRange(inner, _, _) -> proposition_to_pattern(inner)
+    proposition.CondProb(cons, _, _) -> proposition_to_pattern(cons)
   }
 }
 
@@ -837,6 +844,42 @@ fn proposition_to_string(prop: Proposition) -> String {
       "K_" <> agent <> "(" <> proposition_to_string(inner) <> ")"
     proposition.Believes(agent, inner) ->
       "B_" <> agent <> "(" <> proposition_to_string(inner) <> ")"
+    // Probabilistic operators
+    proposition.Probable(inner) ->
+      "Pr>0.5(" <> proposition_to_string(inner) <> ")"
+    proposition.ProbAtLeast(inner, threshold) ->
+      "P>="
+      <> float.to_string(threshold)
+      <> "("
+      <> proposition_to_string(inner)
+      <> ")"
+    proposition.ProbAtMost(inner, threshold) ->
+      "P<="
+      <> float.to_string(threshold)
+      <> "("
+      <> proposition_to_string(inner)
+      <> ")"
+    proposition.ProbExact(inner, probability) ->
+      "P="
+      <> float.to_string(probability)
+      <> "("
+      <> proposition_to_string(inner)
+      <> ")"
+    proposition.ProbRange(inner, low, high) ->
+      "P["
+      <> float.to_string(low)
+      <> ","
+      <> float.to_string(high)
+      <> "]("
+      <> proposition_to_string(inner)
+      <> ")"
+    proposition.CondProb(cons, ante, probability) ->
+      "P("
+      <> proposition_to_string(cons)
+      <> "|"
+      <> proposition_to_string(ante)
+      <> ")="
+      <> float.to_string(probability)
   }
 }
 

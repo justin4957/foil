@@ -1075,6 +1075,14 @@ fn extract_atoms(prop: Proposition) -> List(String) {
     Believes(_, inner) -> extract_atoms(inner)
     Obligatory(inner) -> extract_atoms(inner)
     Permitted(inner) -> extract_atoms(inner)
+    // Probabilistic operators
+    proposition.Probable(inner) -> extract_atoms(inner)
+    proposition.ProbAtLeast(inner, _) -> extract_atoms(inner)
+    proposition.ProbAtMost(inner, _) -> extract_atoms(inner)
+    proposition.ProbExact(inner, _) -> extract_atoms(inner)
+    proposition.ProbRange(inner, _, _) -> extract_atoms(inner)
+    proposition.CondProb(cons, ante, _) ->
+      list.append(extract_atoms(cons), extract_atoms(ante))
   }
 }
 

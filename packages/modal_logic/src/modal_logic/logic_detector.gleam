@@ -385,6 +385,15 @@ fn analyze_proposition(prop: Proposition) -> List(ModalFeature) {
       EpistemicPattern,
       ..analyze_proposition(inner)
     ]
+
+    // Probabilistic operators - treat as a special feature category
+    proposition.Probable(inner) -> analyze_proposition(inner)
+    proposition.ProbAtLeast(inner, _) -> analyze_proposition(inner)
+    proposition.ProbAtMost(inner, _) -> analyze_proposition(inner)
+    proposition.ProbExact(inner, _) -> analyze_proposition(inner)
+    proposition.ProbRange(inner, _, _) -> analyze_proposition(inner)
+    proposition.CondProb(cons, ante, _) ->
+      list.append(analyze_proposition(cons), analyze_proposition(ante))
   }
 }
 

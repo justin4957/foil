@@ -15,6 +15,7 @@
 //// let exp = explanation.explain_validation(formalization, result, StandardLevel)
 //// ```
 
+import gleam/float
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
@@ -754,6 +755,38 @@ fn proposition_to_english(prop: Proposition) -> String {
       agent <> " knows that (" <> proposition_to_english(inner) <> ")"
     proposition.Believes(agent, inner) ->
       agent <> " believes that (" <> proposition_to_english(inner) <> ")"
+    // Probabilistic operators
+    proposition.Probable(inner) ->
+      "probably (" <> proposition_to_english(inner) <> ")"
+    proposition.ProbAtLeast(inner, threshold) ->
+      "probability of ("
+      <> proposition_to_english(inner)
+      <> ") is at least "
+      <> float.to_string(threshold)
+    proposition.ProbAtMost(inner, threshold) ->
+      "probability of ("
+      <> proposition_to_english(inner)
+      <> ") is at most "
+      <> float.to_string(threshold)
+    proposition.ProbExact(inner, probability) ->
+      "probability of ("
+      <> proposition_to_english(inner)
+      <> ") is exactly "
+      <> float.to_string(probability)
+    proposition.ProbRange(inner, low, high) ->
+      "probability of ("
+      <> proposition_to_english(inner)
+      <> ") is between "
+      <> float.to_string(low)
+      <> " and "
+      <> float.to_string(high)
+    proposition.CondProb(cons, ante, probability) ->
+      "probability of ("
+      <> proposition_to_english(cons)
+      <> ") given ("
+      <> proposition_to_english(ante)
+      <> ") is "
+      <> float.to_string(probability)
   }
 }
 
@@ -787,6 +820,41 @@ fn proposition_to_symbol(prop: Proposition) -> String {
       "K_" <> agent <> proposition_to_symbol(inner)
     proposition.Believes(agent, inner) ->
       "B_" <> agent <> proposition_to_symbol(inner)
+    // Probabilistic operators
+    proposition.Probable(inner) -> "Pr>" <> proposition_to_symbol(inner)
+    proposition.ProbAtLeast(inner, threshold) ->
+      "P≥"
+      <> float.to_string(threshold)
+      <> "("
+      <> proposition_to_symbol(inner)
+      <> ")"
+    proposition.ProbAtMost(inner, threshold) ->
+      "P≤"
+      <> float.to_string(threshold)
+      <> "("
+      <> proposition_to_symbol(inner)
+      <> ")"
+    proposition.ProbExact(inner, probability) ->
+      "P="
+      <> float.to_string(probability)
+      <> "("
+      <> proposition_to_symbol(inner)
+      <> ")"
+    proposition.ProbRange(inner, low, high) ->
+      "P["
+      <> float.to_string(low)
+      <> ","
+      <> float.to_string(high)
+      <> "]("
+      <> proposition_to_symbol(inner)
+      <> ")"
+    proposition.CondProb(cons, ante, probability) ->
+      "P("
+      <> proposition_to_symbol(cons)
+      <> "|"
+      <> proposition_to_symbol(ante)
+      <> ")="
+      <> float.to_string(probability)
   }
 }
 

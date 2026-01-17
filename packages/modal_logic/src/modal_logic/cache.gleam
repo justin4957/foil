@@ -19,6 +19,7 @@
 //// ```
 
 import gleam/dict.{type Dict}
+import gleam/float
 import gleam/list
 import gleam/order
 import gleam/string
@@ -520,6 +521,29 @@ pub fn normalize_proposition(prop: Proposition) -> Proposition {
         string.lowercase(agent),
         normalize_proposition(inner),
       )
+
+    // Probabilistic operators
+    proposition.Probable(inner) ->
+      proposition.Probable(normalize_proposition(inner))
+
+    proposition.ProbAtLeast(inner, threshold) ->
+      proposition.ProbAtLeast(normalize_proposition(inner), threshold)
+
+    proposition.ProbAtMost(inner, threshold) ->
+      proposition.ProbAtMost(normalize_proposition(inner), threshold)
+
+    proposition.ProbExact(inner, probability) ->
+      proposition.ProbExact(normalize_proposition(inner), probability)
+
+    proposition.ProbRange(inner, low, high) ->
+      proposition.ProbRange(normalize_proposition(inner), low, high)
+
+    proposition.CondProb(cons, ante, probability) ->
+      proposition.CondProb(
+        normalize_proposition(cons),
+        normalize_proposition(ante),
+        probability,
+      )
   }
 }
 
@@ -666,6 +690,28 @@ fn proposition_to_string(prop: Proposition) -> String {
       "K_" <> agent <> proposition_to_string(inner)
     proposition.Believes(agent, inner) ->
       "B_" <> agent <> proposition_to_string(inner)
+    // Probabilistic operators
+    proposition.Probable(inner) -> "Pr>" <> proposition_to_string(inner)
+    proposition.ProbAtLeast(inner, threshold) ->
+      "Pr>=" <> float.to_string(threshold) <> proposition_to_string(inner)
+    proposition.ProbAtMost(inner, threshold) ->
+      "Pr<=" <> float.to_string(threshold) <> proposition_to_string(inner)
+    proposition.ProbExact(inner, probability) ->
+      "Pr=" <> float.to_string(probability) <> proposition_to_string(inner)
+    proposition.ProbRange(inner, low, high) ->
+      "Pr["
+      <> float.to_string(low)
+      <> ","
+      <> float.to_string(high)
+      <> "]"
+      <> proposition_to_string(inner)
+    proposition.CondProb(cons, ante, probability) ->
+      "P("
+      <> proposition_to_string(cons)
+      <> "|"
+      <> proposition_to_string(ante)
+      <> ")="
+      <> float.to_string(probability)
   }
 }
 
