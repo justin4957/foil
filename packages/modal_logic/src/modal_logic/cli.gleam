@@ -1184,6 +1184,42 @@ fn proposition_to_string(prop: Proposition) -> String {
       "K_" <> agent <> "(" <> proposition_to_string(inner) <> ")"
     Believes(agent, inner) ->
       "B_" <> agent <> "(" <> proposition_to_string(inner) <> ")"
+    // Probabilistic operators
+    proposition.Probable(inner) ->
+      "Pr>0.5(" <> proposition_to_string(inner) <> ")"
+    proposition.ProbAtLeast(inner, threshold) ->
+      "P≥"
+      <> float.to_string(threshold)
+      <> "("
+      <> proposition_to_string(inner)
+      <> ")"
+    proposition.ProbAtMost(inner, threshold) ->
+      "P≤"
+      <> float.to_string(threshold)
+      <> "("
+      <> proposition_to_string(inner)
+      <> ")"
+    proposition.ProbExact(inner, probability) ->
+      "P="
+      <> float.to_string(probability)
+      <> "("
+      <> proposition_to_string(inner)
+      <> ")"
+    proposition.ProbRange(inner, low, high) ->
+      "P["
+      <> float.to_string(low)
+      <> ","
+      <> float.to_string(high)
+      <> "]("
+      <> proposition_to_string(inner)
+      <> ")"
+    proposition.CondProb(cons, ante, probability) ->
+      "P("
+      <> proposition_to_string(cons)
+      <> "|"
+      <> proposition_to_string(ante)
+      <> ")="
+      <> float.to_string(probability)
   }
 }
 

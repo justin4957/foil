@@ -417,6 +417,44 @@ fn proposition_to_json(prop: Proposition) -> json.Json {
         #("agent", json.string(agent)),
         #("inner", proposition_to_json(inner)),
       ])
+    // Probabilistic operators
+    proposition.Probable(inner) ->
+      json.object([
+        #("type", json.string("probable")),
+        #("inner", proposition_to_json(inner)),
+      ])
+    proposition.ProbAtLeast(inner, threshold) ->
+      json.object([
+        #("type", json.string("prob_at_least")),
+        #("inner", proposition_to_json(inner)),
+        #("threshold", json.float(threshold)),
+      ])
+    proposition.ProbAtMost(inner, threshold) ->
+      json.object([
+        #("type", json.string("prob_at_most")),
+        #("inner", proposition_to_json(inner)),
+        #("threshold", json.float(threshold)),
+      ])
+    proposition.ProbExact(inner, probability) ->
+      json.object([
+        #("type", json.string("prob_exact")),
+        #("inner", proposition_to_json(inner)),
+        #("probability", json.float(probability)),
+      ])
+    proposition.ProbRange(inner, low, high) ->
+      json.object([
+        #("type", json.string("prob_range")),
+        #("inner", proposition_to_json(inner)),
+        #("low", json.float(low)),
+        #("high", json.float(high)),
+      ])
+    proposition.CondProb(consequent, antecedent, probability) ->
+      json.object([
+        #("type", json.string("cond_prob")),
+        #("consequent", proposition_to_json(consequent)),
+        #("antecedent", proposition_to_json(antecedent)),
+        #("probability", json.float(probability)),
+      ])
   }
 }
 

@@ -1112,6 +1112,42 @@ fn proposition_to_string(prop: Proposition) -> String {
       "B_" <> agent <> "(" <> proposition_to_string(inner) <> ")"
     Obligatory(inner) -> "O(" <> proposition_to_string(inner) <> ")"
     Permitted(inner) -> "P(" <> proposition_to_string(inner) <> ")"
+    // Probabilistic operators
+    proposition.Probable(inner) ->
+      "Pr>0.5(" <> proposition_to_string(inner) <> ")"
+    proposition.ProbAtLeast(inner, threshold) ->
+      "P≥"
+      <> float.to_string(threshold)
+      <> "("
+      <> proposition_to_string(inner)
+      <> ")"
+    proposition.ProbAtMost(inner, threshold) ->
+      "P≤"
+      <> float.to_string(threshold)
+      <> "("
+      <> proposition_to_string(inner)
+      <> ")"
+    proposition.ProbExact(inner, probability) ->
+      "P="
+      <> float.to_string(probability)
+      <> "("
+      <> proposition_to_string(inner)
+      <> ")"
+    proposition.ProbRange(inner, low, high) ->
+      "P["
+      <> float.to_string(low)
+      <> ","
+      <> float.to_string(high)
+      <> "]("
+      <> proposition_to_string(inner)
+      <> ")"
+    proposition.CondProb(cons, ante, probability) ->
+      "P("
+      <> proposition_to_string(cons)
+      <> "|"
+      <> proposition_to_string(ante)
+      <> ")="
+      <> float.to_string(probability)
   }
 }
 
@@ -1250,6 +1286,14 @@ fn extract_atoms(prop: Proposition) -> List(String) {
     Believes(_, inner) -> extract_atoms(inner)
     Obligatory(inner) -> extract_atoms(inner)
     Permitted(inner) -> extract_atoms(inner)
+    // Probabilistic operators
+    proposition.Probable(inner) -> extract_atoms(inner)
+    proposition.ProbAtLeast(inner, _) -> extract_atoms(inner)
+    proposition.ProbAtMost(inner, _) -> extract_atoms(inner)
+    proposition.ProbExact(inner, _) -> extract_atoms(inner)
+    proposition.ProbRange(inner, _, _) -> extract_atoms(inner)
+    proposition.CondProb(cons, ante, _) ->
+      list.append(extract_atoms(cons), extract_atoms(ante))
   }
 }
 

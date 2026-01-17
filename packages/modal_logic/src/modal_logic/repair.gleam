@@ -768,6 +768,14 @@ fn collect_prop_atoms(prop: Proposition) -> List(String) {
     proposition.Permitted(inner) -> collect_prop_atoms(inner)
     proposition.Knows(_, inner) -> collect_prop_atoms(inner)
     proposition.Believes(_, inner) -> collect_prop_atoms(inner)
+    // Probabilistic operators
+    proposition.Probable(inner) -> collect_prop_atoms(inner)
+    proposition.ProbAtLeast(inner, _) -> collect_prop_atoms(inner)
+    proposition.ProbAtMost(inner, _) -> collect_prop_atoms(inner)
+    proposition.ProbExact(inner, _) -> collect_prop_atoms(inner)
+    proposition.ProbRange(inner, _, _) -> collect_prop_atoms(inner)
+    proposition.CondProb(cons, ante, _) ->
+      list.append(collect_prop_atoms(cons), collect_prop_atoms(ante))
   }
 }
 

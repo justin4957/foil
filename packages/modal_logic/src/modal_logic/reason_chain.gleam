@@ -1010,6 +1010,41 @@ fn format_proposition(prop: Proposition) -> String {
       "K_" <> agent <> "(" <> format_proposition(inner) <> ")"
     Believes(agent, inner) ->
       "B_" <> agent <> "(" <> format_proposition(inner) <> ")"
+    // Probabilistic operators
+    proposition.Probable(inner) -> "Pr>0.5(" <> format_proposition(inner) <> ")"
+    proposition.ProbAtLeast(inner, threshold) ->
+      "P≥"
+      <> float.to_string(threshold)
+      <> "("
+      <> format_proposition(inner)
+      <> ")"
+    proposition.ProbAtMost(inner, threshold) ->
+      "P≤"
+      <> float.to_string(threshold)
+      <> "("
+      <> format_proposition(inner)
+      <> ")"
+    proposition.ProbExact(inner, probability) ->
+      "P="
+      <> float.to_string(probability)
+      <> "("
+      <> format_proposition(inner)
+      <> ")"
+    proposition.ProbRange(inner, low, high) ->
+      "P["
+      <> float.to_string(low)
+      <> ","
+      <> float.to_string(high)
+      <> "]("
+      <> format_proposition(inner)
+      <> ")"
+    proposition.CondProb(cons, ante, probability) ->
+      "P("
+      <> format_proposition(cons)
+      <> "|"
+      <> format_proposition(ante)
+      <> ")="
+      <> float.to_string(probability)
   }
 }
 

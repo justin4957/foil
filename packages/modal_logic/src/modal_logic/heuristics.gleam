@@ -537,6 +537,13 @@ fn proposition_has_modal(prop: Proposition) -> Bool {
     Permitted(_) -> True
     Knows(_, _) -> True
     Believes(_, _) -> True
+    // Probabilistic operators are considered modal
+    proposition.Probable(_) -> True
+    proposition.ProbAtLeast(_, _) -> True
+    proposition.ProbAtMost(_, _) -> True
+    proposition.ProbExact(_, _) -> True
+    proposition.ProbRange(_, _, _) -> True
+    proposition.CondProb(_, _, _) -> True
   }
 }
 
@@ -569,6 +576,14 @@ fn collect_atoms_from_prop(prop: Proposition) -> Set(String) {
     Permitted(p) -> collect_atoms_from_prop(p)
     Knows(_, p) -> collect_atoms_from_prop(p)
     Believes(_, p) -> collect_atoms_from_prop(p)
+    // Probabilistic operators
+    proposition.Probable(p) -> collect_atoms_from_prop(p)
+    proposition.ProbAtLeast(p, _) -> collect_atoms_from_prop(p)
+    proposition.ProbAtMost(p, _) -> collect_atoms_from_prop(p)
+    proposition.ProbExact(p, _) -> collect_atoms_from_prop(p)
+    proposition.ProbRange(p, _, _) -> collect_atoms_from_prop(p)
+    proposition.CondProb(cons, ante, _) ->
+      set.union(collect_atoms_from_prop(cons), collect_atoms_from_prop(ante))
   }
 }
 
@@ -678,6 +693,13 @@ fn evaluate_prop(prop: Proposition, assignment: Dict(String, Bool)) -> Bool {
     Permitted(_) -> True
     Knows(_, _) -> True
     Believes(_, _) -> True
+    // Probabilistic operators - should not reach here due to earlier check
+    proposition.Probable(_) -> True
+    proposition.ProbAtLeast(_, _) -> True
+    proposition.ProbAtMost(_, _) -> True
+    proposition.ProbExact(_, _) -> True
+    proposition.ProbRange(_, _, _) -> True
+    proposition.CondProb(_, _, _) -> True
   }
 }
 

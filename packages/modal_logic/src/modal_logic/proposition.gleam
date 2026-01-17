@@ -34,6 +34,33 @@ pub type Proposition {
 
   /// Epistemic belief
   Believes(agent: String, proposition: Proposition)
+
+  // =========================================================================
+  // Probabilistic Modal Logic Operators (Phase E.1)
+  // =========================================================================
+  /// Probable - probability > 0.5
+  /// Represents "φ is probably true"
+  Probable(Proposition)
+
+  /// Probability at least threshold: P(φ) ≥ threshold
+  /// Represents "probability of φ is at least t"
+  ProbAtLeast(proposition: Proposition, threshold: Float)
+
+  /// Probability at most threshold: P(φ) ≤ threshold
+  /// Represents "probability of φ is at most t"
+  ProbAtMost(proposition: Proposition, threshold: Float)
+
+  /// Exact probability: P(φ) = value
+  /// Represents "probability of φ is exactly p"
+  ProbExact(proposition: Proposition, probability: Float)
+
+  /// Probability range: low ≤ P(φ) ≤ high
+  /// Represents "probability of φ is between low and high"
+  ProbRange(proposition: Proposition, low: Float, high: Float)
+
+  /// Conditional probability: P(φ|ψ) = value
+  /// Represents "probability of φ given ψ is p"
+  CondProb(consequent: Proposition, antecedent: Proposition, probability: Float)
 }
 
 /// Modal logic system

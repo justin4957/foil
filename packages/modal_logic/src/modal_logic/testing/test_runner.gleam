@@ -308,6 +308,21 @@ fn proposition_is_valid(prop: Proposition) -> Bool {
     Permitted(inner) -> proposition_is_valid(inner)
     Knows(_agent, inner) -> proposition_is_valid(inner)
     Believes(_agent, inner) -> proposition_is_valid(inner)
+    // Probabilistic modal logic operators
+    proposition.Probable(inner) -> proposition_is_valid(inner)
+    proposition.ProbAtLeast(inner, threshold) ->
+      proposition_is_valid(inner) && threshold >=. 0.0 && threshold <=. 1.0
+    proposition.ProbAtMost(inner, threshold) ->
+      proposition_is_valid(inner) && threshold >=. 0.0 && threshold <=. 1.0
+    proposition.ProbExact(inner, probability) ->
+      proposition_is_valid(inner) && probability >=. 0.0 && probability <=. 1.0
+    proposition.ProbRange(inner, low, high) ->
+      proposition_is_valid(inner) && low >=. 0.0 && high <=. 1.0 && low <=. high
+    proposition.CondProb(consequent, antecedent, probability) ->
+      proposition_is_valid(consequent)
+      && proposition_is_valid(antecedent)
+      && probability >=. 0.0
+      && probability <=. 1.0
   }
 }
 
