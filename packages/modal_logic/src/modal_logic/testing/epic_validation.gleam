@@ -31,6 +31,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import modal_logic/argument.{type Formalization, Formalization, Invalid, Valid}
+import modal_logic/benchmark_runner
 import modal_logic/confidence
 import modal_logic/fallacy
 import modal_logic/heuristics.{
@@ -1272,40 +1273,372 @@ fn generate_frame_dependent_test_cases() -> List(#(Formalization, String)) {
 }
 
 // =============================================================================
-// Phase D: Accuracy Benchmarking (Placeholder)
+// Phase D: Accuracy Benchmarking
 // =============================================================================
 
 fn validate_phase_d(config: EpicValidationConfig) -> PhaseValidationResult {
   let metrics = [
-    placeholder_metric(
-      "folio_f1_score",
-      80.0,
-      "FOLIO dataset F1 score",
-      config.accuracy_samples,
-    ),
-    placeholder_metric(
-      "logiqa_accuracy",
-      75.0,
-      "LogiQA dataset accuracy",
-      config.accuracy_samples,
-    ),
-    placeholder_metric(
-      "inpho_coverage",
-      70.0,
-      "InPhO coverage",
-      config.accuracy_samples,
-    ),
+    validate_folio_f1_score(config.accuracy_samples),
+    validate_logiqa_accuracy(config.accuracy_samples),
+    validate_inpho_coverage(config.accuracy_samples),
+    validate_benchmark_regression_detection(config.accuracy_samples),
+    validate_benchmark_performance(config.accuracy_samples),
   ]
+
+  let all_passed = list.all(metrics, fn(m) { m.passed })
 
   PhaseValidationResult(
     phase: PhaseD,
     name: "Accuracy Benchmarking",
     metrics: metrics,
-    passed: False,
-    duration_ms: 0,
+    passed: all_passed,
+    duration_ms: calculate_total_duration(metrics),
     issues: [151],
-    completed_issues: [],
+    completed_issues: [151],
   )
+}
+
+/// Validate FOLIO dataset F1 score
+///
+/// Runs benchmark against FOLIO dataset and checks F1 score.
+/// Target: 80% F1 score
+pub fn validate_folio_f1_score(sample_size: Int) -> MetricResult {
+  // Create a limited suite for validation
+  let folio_suite = benchmark_runner.folio_suite()
+  let limited_cases =
+    folio_suite.test_cases
+    |> list.take(sample_size)
+
+  let config = benchmark_runner.fast_config()
+  let suite =
+    benchmark_runner.BenchmarkSuite(
+      ..folio_suite,
+      test_cases: limited_cases,
+      config: config,
+    )
+
+  let results = benchmark_runner.run_benchmark_suite(suite, config)
+  let f1_percent = results.accuracy.f1_score *. 100.0
+
+  MetricResult(
+    name: "folio_f1_score",
+    target: 80.0,
+    actual: f1_percent,
+    passed: f1_percent >=. 80.0,
+    samples: list.length(limited_cases),
+    unit: "%",
+    details: Some(
+      "FOLIO dataset F1 score. "
+      <> "Precision: "
+      <> float_to_string_2dp(results.accuracy.precision *. 100.0)
+      <> "%, Recall: "
+      <> float_to_string_2dp(results.accuracy.recall *. 100.0)
+      <> "%",
+    ),
+  )
+}
+
+/// Validate LogiQA dataset accuracy
+///
+/// Runs benchmark against LogiQA dataset and checks accuracy.
+/// Target: 75% accuracy
+pub fn validate_logiqa_accuracy(sample_size: Int) -> MetricResult {
+  let logiqa_suite = benchmark_runner.logiqa_suite()
+  let limited_cases =
+    logiqa_suite.test_cases
+    |> list.take(sample_size)
+
+  let config = benchmark_runner.fast_config()
+  let suite =
+    benchmark_runner.BenchmarkSuite(
+      ..logiqa_suite,
+      test_cases: limited_cases,
+      config: config,
+    )
+
+  let results = benchmark_runner.run_benchmark_suite(suite, config)
+  let accuracy_percent = results.accuracy.accuracy *. 100.0
+
+  MetricResult(
+    name: "logiqa_accuracy",
+    target: 75.0,
+    actual: accuracy_percent,
+    passed: accuracy_percent >=. 75.0,
+    samples: list.length(limited_cases),
+    unit: "%",
+    details: Some(
+      "LogiQA dataset accuracy. "
+      <> "TP: "
+      <> int.to_string(results.accuracy.true_positives)
+      <> ", TN: "
+      <> int.to_string(results.accuracy.true_negatives)
+      <> ", FP: "
+      <> int.to_string(results.accuracy.false_positives)
+      <> ", FN: "
+      <> int.to_string(results.accuracy.false_negatives),
+    ),
+  )
+}
+
+/// Validate InPhO dataset coverage
+///
+/// Runs benchmark against InPhO dataset and checks coverage.
+/// Target: 70% coverage
+pub fn validate_inpho_coverage(sample_size: Int) -> MetricResult {
+  let inpho_suite = benchmark_runner.inpho_suite()
+  let limited_cases =
+    inpho_suite.test_cases
+    |> list.take(sample_size)
+
+  let config = benchmark_runner.fast_config()
+  let suite =
+    benchmark_runner.BenchmarkSuite(
+      ..inpho_suite,
+      test_cases: limited_cases,
+      config: config,
+    )
+
+  let results = benchmark_runner.run_benchmark_suite(suite, config)
+
+  // Coverage = percentage of cases that got a valid prediction
+  let cases_with_predictions =
+    results.case_results
+    |> list.count(fn(r) { option.is_some(r.predicted_valid) })
+
+  let coverage = case list.length(results.case_results) {
+    0 -> 0.0
+    n -> int.to_float(cases_with_predictions) /. int.to_float(n) *. 100.0
+  }
+
+  MetricResult(
+    name: "inpho_coverage",
+    target: 70.0,
+    actual: coverage,
+    passed: coverage >=. 70.0,
+    samples: list.length(limited_cases),
+    unit: "%",
+    details: Some(
+      "InPhO dataset coverage (cases with valid predictions). "
+      <> "Cases processed: "
+      <> int.to_string(list.length(results.case_results))
+      <> ", Predictions made: "
+      <> int.to_string(cases_with_predictions),
+    ),
+  )
+}
+
+/// Validate benchmark regression detection
+///
+/// Tests that the benchmark runner can correctly detect regressions.
+/// Target: 100% (regression detection must work correctly)
+pub fn validate_benchmark_regression_detection(sample_size: Int) -> MetricResult {
+  // Create simple test cases
+  let test_cases = generate_benchmark_test_cases(sample_size / 2)
+  let config = benchmark_runner.fast_config()
+  let suite =
+    benchmark_runner.custom_suite("Regression Test", test_cases, config)
+
+  let results = benchmark_runner.run_benchmark_suite(suite, config)
+
+  // Create a baseline with worse metrics to test regression detection
+  let worse_baseline =
+    benchmark_runner.BenchmarkResults(
+      ..results,
+      timestamp: "2026-01-01T00:00:00Z",
+      accuracy: benchmark_runner.AccuracyMetrics(
+        ..results.accuracy,
+        f1_score: results.accuracy.f1_score +. 0.1,
+        // Baseline was 10% better
+          accuracy: results.accuracy.accuracy +. 0.1,
+      ),
+    )
+
+  let comparison = benchmark_runner.compare_to_baseline(results, worse_baseline)
+
+  // Should detect regression when baseline was significantly better
+  let regression_detected_correctly =
+    benchmark_runner.has_regression(comparison)
+
+  // Also test that no regression is detected when results are the same
+  let same_comparison = benchmark_runner.compare_to_baseline(results, results)
+  let no_false_positive = !benchmark_runner.has_regression(same_comparison)
+
+  let tests_passed = case regression_detected_correctly, no_false_positive {
+    True, True -> 2
+    True, False -> 1
+    False, True -> 1
+    False, False -> 0
+  }
+
+  let accuracy = int.to_float(tests_passed) /. 2.0 *. 100.0
+
+  MetricResult(
+    name: "benchmark_regression_detection",
+    target: 100.0,
+    actual: accuracy,
+    passed: accuracy >=. 100.0,
+    samples: 2,
+    unit: "%",
+    details: Some(
+      "Regression detection accuracy. "
+      <> "Regression detected: "
+      <> bool_to_string(regression_detected_correctly)
+      <> ", No false positive: "
+      <> bool_to_string(no_false_positive),
+    ),
+  )
+}
+
+/// Validate benchmark performance metrics
+///
+/// Tests that benchmark performance metrics are computed correctly.
+/// Target: P95 latency under 3000ms for FOLIO dataset
+pub fn validate_benchmark_performance(sample_size: Int) -> MetricResult {
+  let test_cases = generate_benchmark_test_cases(sample_size)
+  let config = benchmark_runner.fast_config()
+  let suite =
+    benchmark_runner.custom_suite("Performance Test", test_cases, config)
+
+  let results = benchmark_runner.run_benchmark_suite(suite, config)
+
+  // Check that P95 is under target (3000ms for FOLIO)
+  let p95_target = 3000
+  let p95_passed = results.performance.p95_ms <= p95_target
+
+  // Also check throughput is reasonable (at least 1 case/sec)
+  let throughput_passed = results.performance.throughput >=. 1.0
+
+  let score = case p95_passed, throughput_passed {
+    True, True -> 100.0
+    True, False -> 50.0
+    False, True -> 50.0
+    False, False -> 0.0
+  }
+
+  MetricResult(
+    name: "benchmark_performance",
+    target: 100.0,
+    actual: score,
+    passed: score >=. 100.0,
+    samples: sample_size,
+    unit: "%",
+    details: Some(
+      "Benchmark performance metrics. "
+      <> "P95: "
+      <> int.to_string(results.performance.p95_ms)
+      <> "ms (target: <"
+      <> int.to_string(p95_target)
+      <> "ms), "
+      <> "Throughput: "
+      <> float_to_string_2dp(results.performance.throughput)
+      <> " cases/sec",
+    ),
+  )
+}
+
+/// Generate benchmark test cases for validation
+fn generate_benchmark_test_cases(
+  count: Int,
+) -> List(benchmark_runner.BenchmarkCase) {
+  let p = Atom("p")
+  let q = Atom("q")
+
+  let base_cases = [
+    // Valid: tautology
+    benchmark_runner.BenchmarkCase(
+      id: "tautology",
+      input: "p implies p",
+      expected_validity: benchmark_runner.ExpectedValidBenchmark,
+      expected_system: Some(K),
+      category: "propositional",
+      difficulty: benchmark_runner.Trivial,
+      premises: [],
+      conclusion: Implies(p, p),
+    ),
+    // Valid: modus ponens
+    benchmark_runner.BenchmarkCase(
+      id: "modus_ponens",
+      input: "If p then q. p. Therefore q.",
+      expected_validity: benchmark_runner.ExpectedValidBenchmark,
+      expected_system: Some(K),
+      category: "propositional",
+      difficulty: benchmark_runner.BenchmarkEasy,
+      premises: [Implies(p, q), p],
+      conclusion: q,
+    ),
+    // Valid: law of excluded middle
+    benchmark_runner.BenchmarkCase(
+      id: "excluded_middle",
+      input: "p or not p",
+      expected_validity: benchmark_runner.ExpectedValidBenchmark,
+      expected_system: Some(K),
+      category: "propositional",
+      difficulty: benchmark_runner.Trivial,
+      premises: [],
+      conclusion: Or(p, Not(p)),
+    ),
+    // Invalid: non-sequitur
+    benchmark_runner.BenchmarkCase(
+      id: "non_sequitur",
+      input: "p therefore q",
+      expected_validity: benchmark_runner.ExpectedInvalidBenchmark,
+      expected_system: Some(K),
+      category: "propositional",
+      difficulty: benchmark_runner.BenchmarkEasy,
+      premises: [p],
+      conclusion: q,
+    ),
+    // Invalid: affirming consequent
+    benchmark_runner.BenchmarkCase(
+      id: "affirming_consequent",
+      input: "If p then q. q. Therefore p.",
+      expected_validity: benchmark_runner.ExpectedInvalidBenchmark,
+      expected_system: Some(K),
+      category: "propositional",
+      difficulty: benchmark_runner.BenchmarkEasy,
+      premises: [Implies(p, q), q],
+      conclusion: p,
+    ),
+    // Modal: T-axiom (valid in T)
+    benchmark_runner.BenchmarkCase(
+      id: "t_axiom",
+      input: "Necessarily p implies p",
+      expected_validity: benchmark_runner.ExpectedValidBenchmark,
+      expected_system: Some(T),
+      category: "modal",
+      difficulty: benchmark_runner.BenchmarkMedium,
+      premises: [Necessary(p)],
+      conclusion: p,
+    ),
+  ]
+
+  // Replicate to reach target count
+  let repeat_count = { count / list.length(base_cases) } + 1
+  base_cases
+  |> list.flat_map(fn(c) { list.repeat(c, repeat_count) })
+  |> list.take(count)
+  |> list.index_map(fn(c, idx) {
+    benchmark_runner.BenchmarkCase(..c, id: c.id <> "_" <> int.to_string(idx))
+  })
+}
+
+/// Convert float to string with 2 decimal places
+fn float_to_string_2dp(f: Float) -> String {
+  let truncated = float.truncate(f *. 100.0)
+  let whole = truncated / 100
+  let decimal = int.absolute_value(truncated % 100)
+  let decimal_str = case decimal < 10 {
+    True -> "0" <> int.to_string(decimal)
+    False -> int.to_string(decimal)
+  }
+  int.to_string(whole) <> "." <> decimal_str
+}
+
+fn bool_to_string(b: Bool) -> String {
+  case b {
+    True -> "true"
+    False -> "false"
+  }
 }
 
 // =============================================================================
