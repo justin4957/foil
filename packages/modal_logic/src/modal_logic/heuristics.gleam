@@ -164,6 +164,8 @@ pub fn try_heuristic_validation_with_config(
 /// - Contradictions (always false patterns)
 /// - Identity (conclusion is a premise)
 /// - Trivial implications
+/// - Classical inference rules (modus ponens, modus tollens, etc.)
+/// - Disjunctive and conjunctive patterns
 fn try_tier1_validation(formalization: Formalization) -> Option(HeuristicResult) {
   // Check if conclusion is identical to a premise (immediate validity)
   case check_identity_validity(formalization) {
@@ -181,8 +183,14 @@ fn try_tier1_validation(formalization: Formalization) -> Option(HeuristicResult)
               case check_conclusion_contradiction(formalization.conclusion) {
                 Some(result) -> Some(result)
                 None -> {
-                  // Check modal axiom patterns
-                  check_modal_axiom_patterns(formalization)
+                  // Check classical inference patterns (modus ponens, etc.)
+                  case check_classical_inference_patterns(formalization) {
+                    Some(result) -> Some(result)
+                    None -> {
+                      // Check modal axiom patterns
+                      check_modal_axiom_patterns(formalization)
+                    }
+                  }
                 }
               }
             }
@@ -326,48 +334,709 @@ fn is_contradiction(prop: Proposition) -> Bool {
   }
 }
 
+// =============================================================================
+// Classical Inference Patterns (Tier 1 Fast Path)
+// =============================================================================
+
+/// Check for classical propositional inference patterns
+/// These can be resolved syntactically without truth table enumeration
+fn check_classical_inference_patterns(
+  formalization: Formalization,
+) -> Option(HeuristicResult) {
+  let premises = formalization.premises
+  let conclusion = formalization.conclusion
+
+  // Check modus ponens: p → q, p ⊢ q
+  case check_modus_ponens(premises, conclusion) {
+    Some(result) -> Some(result)
+    None -> {
+      // Check modus tollens: p → q, ¬q ⊢ ¬p
+      case check_modus_tollens(premises, conclusion) {
+        Some(result) -> Some(result)
+        None -> {
+          // Check hypothetical syllogism: p → q, q → r ⊢ p → r
+          case check_hypothetical_syllogism(premises, conclusion) {
+            Some(result) -> Some(result)
+            None -> {
+              // Check disjunctive syllogism: p ∨ q, ¬p ⊢ q
+              case check_disjunctive_syllogism(premises, conclusion) {
+                Some(result) -> Some(result)
+                None -> {
+                  // Check conjunction elimination: p ∧ q ⊢ p or p ∧ q ⊢ q
+                  case check_conjunction_elimination(premises, conclusion) {
+                    Some(result) -> Some(result)
+                    None -> {
+                      // Check double negation elimination: ¬¬p ⊢ p
+                      case
+                        check_double_negation_elimination(premises, conclusion)
+                      {
+                        Some(result) -> Some(result)
+                        None -> {
+                          // Check conjunction introduction: p, q ⊢ p ∧ q
+                          case
+                            check_conjunction_introduction(premises, conclusion)
+                          {
+                            Some(result) -> Some(result)
+                            None -> {
+                              // Check disjunction introduction: p ⊢ p ∨ q
+                              case
+                                check_disjunction_introduction(
+                                  premises,
+                                  conclusion,
+                                )
+                              {
+                                Some(result) -> Some(result)
+                                None -> {
+                                  // Check common fallacy patterns (invalid arguments)
+                                  check_common_fallacy_patterns(
+                                    premises,
+                                    conclusion,
+                                  )
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/// Check modus ponens pattern: p → q, p ⊢ q
+fn check_modus_ponens(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  // Look for an implication p → q where q matches conclusion
+  let implication_match =
+    list.find(premises, fn(premise) {
+      case premise {
+        Implies(_, consequent) -> propositions_equal(consequent, conclusion)
+        _ -> False
+      }
+    })
+
+  case implication_match {
+    Ok(Implies(antecedent, _)) -> {
+      // Check if the antecedent is also a premise
+      let has_antecedent =
+        list.any(premises, fn(p) { propositions_equal(p, antecedent) })
+      case has_antecedent {
+        True ->
+          Some(HeuristicResult(
+            result: Valid,
+            tier: Tier1Syntactic,
+            explanation: "Modus ponens: from p → q and p, conclude q",
+          ))
+        False -> None
+      }
+    }
+    _ -> None
+  }
+}
+
+/// Check modus tollens pattern: p → q, ¬q ⊢ ¬p
+fn check_modus_tollens(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  // Conclusion should be ¬p
+  case conclusion {
+    Not(negated_antecedent) -> {
+      // Look for an implication p → q where p matches negated_antecedent
+      let implication_match =
+        list.find(premises, fn(premise) {
+          case premise {
+            Implies(antecedent, _) ->
+              propositions_equal(antecedent, negated_antecedent)
+            _ -> False
+          }
+        })
+
+      case implication_match {
+        Ok(Implies(_, consequent)) -> {
+          // Check if ¬q (negation of consequent) is a premise
+          let has_negated_consequent =
+            list.any(premises, fn(p) {
+              case p {
+                Not(inner) -> propositions_equal(inner, consequent)
+                _ -> False
+              }
+            })
+          case has_negated_consequent {
+            True ->
+              Some(HeuristicResult(
+                result: Valid,
+                tier: Tier1Syntactic,
+                explanation: "Modus tollens: from p → q and ¬q, conclude ¬p",
+              ))
+            False -> None
+          }
+        }
+        _ -> None
+      }
+    }
+    _ -> None
+  }
+}
+
+/// Check hypothetical syllogism: p → q, q → r ⊢ p → r
+fn check_hypothetical_syllogism(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  case conclusion {
+    Implies(p, r) -> {
+      // Find all implications in premises
+      let implications =
+        list.filter_map(premises, fn(premise) {
+          case premise {
+            Implies(a, b) -> Ok(#(a, b))
+            _ -> Error(Nil)
+          }
+        })
+
+      // Check if there's a chain p → q and q → r
+      let has_chain =
+        list.any(implications, fn(impl1) {
+          let #(a, b) = impl1
+          case propositions_equal(a, p) {
+            True -> {
+              // Found p → q, now look for q → r
+              list.any(implications, fn(impl2) {
+                let #(c, d) = impl2
+                propositions_equal(c, b) && propositions_equal(d, r)
+              })
+            }
+            False -> False
+          }
+        })
+
+      case has_chain {
+        True ->
+          Some(HeuristicResult(
+            result: Valid,
+            tier: Tier1Syntactic,
+            explanation: "Hypothetical syllogism: from p → q and q → r, conclude p → r",
+          ))
+        False -> None
+      }
+    }
+    _ -> None
+  }
+}
+
+/// Check disjunctive syllogism: p ∨ q, ¬p ⊢ q  or  p ∨ q, ¬q ⊢ p
+fn check_disjunctive_syllogism(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  // Look for a disjunction that contains the conclusion
+  let disjunction_match =
+    list.find(premises, fn(premise) {
+      case premise {
+        Or(left, right) ->
+          propositions_equal(left, conclusion)
+          || propositions_equal(right, conclusion)
+        _ -> False
+      }
+    })
+
+  case disjunction_match {
+    Ok(Or(left, right)) -> {
+      // Determine which disjunct is the conclusion and check if negation of other is a premise
+      let #(other_disjunct, _is_left) = case
+        propositions_equal(left, conclusion)
+      {
+        True -> #(right, True)
+        False -> #(left, False)
+      }
+
+      // Check if ¬other_disjunct is a premise
+      let has_negation =
+        list.any(premises, fn(p) {
+          case p {
+            Not(inner) -> propositions_equal(inner, other_disjunct)
+            _ -> False
+          }
+        })
+
+      case has_negation {
+        True ->
+          Some(HeuristicResult(
+            result: Valid,
+            tier: Tier1Syntactic,
+            explanation: "Disjunctive syllogism: from p ∨ q and ¬p, conclude q",
+          ))
+        False -> None
+      }
+    }
+    _ -> None
+  }
+}
+
+/// Check conjunction elimination: p ∧ q ⊢ p  or  p ∧ q ⊢ q
+fn check_conjunction_elimination(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  // Look for a conjunction that contains the conclusion as a conjunct
+  let conjunction_match =
+    list.any(premises, fn(premise) {
+      case premise {
+        And(left, right) ->
+          propositions_equal(left, conclusion)
+          || propositions_equal(right, conclusion)
+        _ -> False
+      }
+    })
+
+  case conjunction_match {
+    True ->
+      Some(HeuristicResult(
+        result: Valid,
+        tier: Tier1Syntactic,
+        explanation: "Conjunction elimination: from p ∧ q, conclude p (or q)",
+      ))
+    False -> None
+  }
+}
+
+/// Check double negation elimination: ¬¬p ⊢ p
+fn check_double_negation_elimination(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  // Check if ¬¬conclusion is a premise
+  let has_double_negation =
+    list.any(premises, fn(premise) {
+      case premise {
+        Not(Not(inner)) -> propositions_equal(inner, conclusion)
+        _ -> False
+      }
+    })
+
+  case has_double_negation {
+    True ->
+      Some(HeuristicResult(
+        result: Valid,
+        tier: Tier1Syntactic,
+        explanation: "Double negation elimination: from ¬¬p, conclude p",
+      ))
+    False -> None
+  }
+}
+
+/// Check conjunction introduction: p, q ⊢ p ∧ q
+fn check_conjunction_introduction(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  case conclusion {
+    And(left, right) -> {
+      let has_left = list.any(premises, fn(p) { propositions_equal(p, left) })
+      let has_right = list.any(premises, fn(p) { propositions_equal(p, right) })
+      case has_left && has_right {
+        True ->
+          Some(HeuristicResult(
+            result: Valid,
+            tier: Tier1Syntactic,
+            explanation: "Conjunction introduction: from p and q, conclude p ∧ q",
+          ))
+        False -> None
+      }
+    }
+    _ -> None
+  }
+}
+
+/// Check disjunction introduction: p ⊢ p ∨ q  or  q ⊢ p ∨ q
+fn check_disjunction_introduction(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  case conclusion {
+    Or(left, right) -> {
+      let has_left = list.any(premises, fn(p) { propositions_equal(p, left) })
+      let has_right = list.any(premises, fn(p) { propositions_equal(p, right) })
+      case has_left || has_right {
+        True ->
+          Some(HeuristicResult(
+            result: Valid,
+            tier: Tier1Syntactic,
+            explanation: "Disjunction introduction: from p, conclude p ∨ q",
+          ))
+        False -> None
+      }
+    }
+    _ -> None
+  }
+}
+
+// =============================================================================
+// Common Fallacy Patterns (Tier 1 Invalid Detection)
+// =============================================================================
+
+/// Check for common fallacy patterns that are definitively invalid
+/// This helps increase Tier 1 coverage by catching known-invalid patterns
+fn check_common_fallacy_patterns(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  // Check affirming the consequent: p → q, q ⊢ p
+  case check_affirming_consequent(premises, conclusion) {
+    Some(result) -> Some(result)
+    None -> {
+      // Check denying the antecedent: p → q, ¬p ⊢ ¬q
+      case check_denying_antecedent(premises, conclusion) {
+        Some(result) -> Some(result)
+        None -> {
+          // Check affirming a disjunct: p ∨ q, p ⊢ ¬q
+          check_affirming_disjunct(premises, conclusion)
+        }
+      }
+    }
+  }
+}
+
+/// Check affirming the consequent fallacy: p → q, q ⊢ p
+fn check_affirming_consequent(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  // Look for an implication p → q where p matches conclusion
+  let implication_match =
+    list.find(premises, fn(premise) {
+      case premise {
+        Implies(antecedent, _) -> propositions_equal(antecedent, conclusion)
+        _ -> False
+      }
+    })
+
+  case implication_match {
+    Ok(Implies(_, consequent)) -> {
+      // Check if the consequent (not antecedent) is a premise
+      let has_consequent_only =
+        list.any(premises, fn(p) { propositions_equal(p, consequent) })
+        && !list.any(premises, fn(p) { propositions_equal(p, conclusion) })
+
+      case has_consequent_only {
+        True ->
+          Some(HeuristicResult(
+            result: Invalid(
+              "Affirming the consequent: from p → q and q, cannot conclude p",
+            ),
+            tier: Tier1Syntactic,
+            explanation: "Fallacy detected: affirming the consequent",
+          ))
+        False -> None
+      }
+    }
+    _ -> None
+  }
+}
+
+/// Check denying the antecedent fallacy: p → q, ¬p ⊢ ¬q
+fn check_denying_antecedent(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  // Conclusion should be ¬q
+  case conclusion {
+    Not(negated_consequent) -> {
+      // Look for an implication p → q where q matches negated_consequent
+      let implication_match =
+        list.find(premises, fn(premise) {
+          case premise {
+            Implies(_, consequent) ->
+              propositions_equal(consequent, negated_consequent)
+            _ -> False
+          }
+        })
+
+      case implication_match {
+        Ok(Implies(antecedent, _)) -> {
+          // Check if ¬p (negation of antecedent) is a premise but not other conditions
+          let has_negated_antecedent =
+            list.any(premises, fn(p) {
+              case p {
+                Not(inner) -> propositions_equal(inner, antecedent)
+                _ -> False
+              }
+            })
+
+          // Make sure q is not already negated in premises (that would be modus tollens)
+          let has_negated_consequent =
+            list.any(premises, fn(p) {
+              case p {
+                Not(inner) -> propositions_equal(inner, negated_consequent)
+                _ -> False
+              }
+            })
+
+          case has_negated_antecedent && !has_negated_consequent {
+            True ->
+              Some(HeuristicResult(
+                result: Invalid(
+                  "Denying the antecedent: from p → q and ¬p, cannot conclude ¬q",
+                ),
+                tier: Tier1Syntactic,
+                explanation: "Fallacy detected: denying the antecedent",
+              ))
+            False -> None
+          }
+        }
+        _ -> None
+      }
+    }
+    _ -> None
+  }
+}
+
+/// Check affirming a disjunct fallacy: p ∨ q, p ⊢ ¬q
+fn check_affirming_disjunct(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  // Conclusion should be ¬q
+  case conclusion {
+    Not(negated) -> {
+      // Look for a disjunction containing the negated conclusion
+      let disjunction_match =
+        list.find(premises, fn(premise) {
+          case premise {
+            Or(left, right) ->
+              propositions_equal(left, negated)
+              || propositions_equal(right, negated)
+            _ -> False
+          }
+        })
+
+      case disjunction_match {
+        Ok(Or(left, right)) -> {
+          // Determine which disjunct is the negated conclusion
+          let other_disjunct = case propositions_equal(left, negated) {
+            True -> right
+            False -> left
+          }
+
+          // Check if the other disjunct is a premise (affirming it)
+          let has_other_disjunct =
+            list.any(premises, fn(p) { propositions_equal(p, other_disjunct) })
+
+          case has_other_disjunct {
+            True ->
+              Some(HeuristicResult(
+                result: Invalid(
+                  "Affirming a disjunct: from p ∨ q and p, cannot conclude ¬q",
+                ),
+                tier: Tier1Syntactic,
+                explanation: "Fallacy detected: affirming a disjunct (disjunction is inclusive)",
+              ))
+            False -> None
+          }
+        }
+        _ -> None
+      }
+    }
+    _ -> None
+  }
+}
+
 /// Check for modal axiom patterns that are always valid/invalid in specific systems
 fn check_modal_axiom_patterns(
   formalization: Formalization,
 ) -> Option(HeuristicResult) {
   let conclusion = formalization.conclusion
+  let premises = formalization.premises
   let system = formalization.logic_system
 
+  // First check premise-based modal inference patterns
+  case check_modal_inference_patterns(premises, conclusion) {
+    Some(result) -> Some(result)
+    None -> {
+      // Then check conclusion-only axiom patterns
+      case conclusion {
+        // T axiom: □p → p (valid in T, S4, S5; invalid in K, K4, KD, KD45)
+        Implies(Necessary(p), q) -> {
+          case propositions_equal(p, q) {
+            True -> check_t_axiom(system)
+            False -> check_other_implication_patterns(conclusion, system)
+          }
+        }
+
+        // 5 axiom: ◇p → □◇p (valid in S5, KD45)
+        Implies(Possible(p), Necessary(Possible(q))) -> {
+          case propositions_equal(p, q) {
+            True -> check_5_axiom(system)
+            False -> None
+          }
+        }
+
+        // Dual: ◇p → ¬□¬p
+        Implies(Possible(p), Not(Necessary(Not(q)))) -> {
+          case propositions_equal(p, q) {
+            True ->
+              Some(HeuristicResult(
+                result: Valid,
+                tier: Tier1Syntactic,
+                explanation: "Modal dual: ◇p → ¬□¬p is valid in all modal logics",
+              ))
+            False -> None
+          }
+        }
+
+        // Dual: ¬□¬p → ◇p
+        Implies(Not(Necessary(Not(p))), Possible(q)) -> {
+          case propositions_equal(p, q) {
+            True ->
+              Some(HeuristicResult(
+                result: Valid,
+                tier: Tier1Syntactic,
+                explanation: "Modal dual: ¬□¬p → ◇p is valid in all modal logics",
+              ))
+            False -> None
+          }
+        }
+
+        _ -> None
+      }
+    }
+  }
+}
+
+/// Check modal inference patterns based on premises and conclusion
+fn check_modal_inference_patterns(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  // K distribution: □(p → q), □p ⊢ □q
+  case check_k_distribution(premises, conclusion) {
+    Some(result) -> Some(result)
+    None -> {
+      // Modal modus ponens: □(p → q), p ⊢ q (in reflexive systems)
+      case check_modal_modus_ponens(premises, conclusion) {
+        Some(result) -> Some(result)
+        None -> {
+          // Necessitation from tautology premise
+          check_necessitation_from_tautology(premises, conclusion)
+        }
+      }
+    }
+  }
+}
+
+/// Check K distribution rule: □(p → q), □p ⊢ □q
+fn check_k_distribution(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
   case conclusion {
-    // T axiom: □p → p (valid in T, S4, S5; invalid in K, K4, KD, KD45)
-    Implies(Necessary(p), q) -> {
-      case propositions_equal(p, q) {
-        True -> check_t_axiom(system)
-        False -> check_other_implication_patterns(conclusion, system)
+    Necessary(inner_conclusion) -> {
+      // Look for □(p → q) where q = inner_conclusion
+      let boxed_implication =
+        list.find(premises, fn(premise) {
+          case premise {
+            Necessary(Implies(_, consequent)) ->
+              propositions_equal(consequent, inner_conclusion)
+            _ -> False
+          }
+        })
+
+      case boxed_implication {
+        Ok(Necessary(Implies(antecedent, _))) -> {
+          // Look for □p where p = antecedent
+          let has_boxed_antecedent =
+            list.any(premises, fn(p) {
+              case p {
+                Necessary(inner) -> propositions_equal(inner, antecedent)
+                _ -> False
+              }
+            })
+
+          case has_boxed_antecedent {
+            True ->
+              Some(HeuristicResult(
+                result: Valid,
+                tier: Tier1Syntactic,
+                explanation: "K distribution: from □(p → q) and □p, conclude □q",
+              ))
+            False -> None
+          }
+        }
+        _ -> None
       }
     }
+    _ -> None
+  }
+}
 
-    // Dual: ◇p → ¬□¬p
-    Implies(Possible(p), Not(Necessary(Not(q)))) -> {
-      case propositions_equal(p, q) {
+/// Check modal modus ponens pattern for conclusions
+fn check_modal_modus_ponens(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  // Look for □(p → conclusion) and p in premises
+  let boxed_implication =
+    list.find(premises, fn(premise) {
+      case premise {
+        Necessary(Implies(_, consequent)) ->
+          propositions_equal(consequent, conclusion)
+        _ -> False
+      }
+    })
+
+  case boxed_implication {
+    Ok(Necessary(Implies(antecedent, _))) -> {
+      // Check if antecedent is a premise
+      let has_antecedent =
+        list.any(premises, fn(p) { propositions_equal(p, antecedent) })
+
+      case has_antecedent {
         True ->
           Some(HeuristicResult(
             result: Valid,
             tier: Tier1Syntactic,
-            explanation: "Modal dual: ◇p → ¬□¬p is valid in all modal logics",
+            explanation: "Modal modus ponens: from □(p → q) and p, conclude q",
           ))
         False -> None
       }
     }
+    _ -> None
+  }
+}
 
-    // Dual: ¬□¬p → ◇p
-    Implies(Not(Necessary(Not(p))), Possible(q)) -> {
-      case propositions_equal(p, q) {
+/// Check necessitation from a tautology: if p is a tautology premise, □p is valid
+fn check_necessitation_from_tautology(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Option(HeuristicResult) {
+  case conclusion {
+    Necessary(inner) -> {
+      // Check if inner is identical to a premise that is a tautology
+      let has_tautology_premise =
+        list.any(premises, fn(p) {
+          propositions_equal(p, inner) && is_tautology(inner)
+        })
+
+      case has_tautology_premise {
         True ->
           Some(HeuristicResult(
             result: Valid,
             tier: Tier1Syntactic,
-            explanation: "Modal dual: ¬□¬p → ◇p is valid in all modal logics",
+            explanation: "Necessitation: tautologies are necessarily true",
           ))
         False -> None
       }
     }
-
     _ -> None
   }
 }
