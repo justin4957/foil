@@ -182,6 +182,36 @@ Test fixtures and sample arguments are located in:
 - `packages/*/test/fixtures/`
 - `apps/analyst/test/fixtures/`
 
+## Timing and Performance Measurement
+
+The `modal_logic/timing` module provides real BEAM monotonic time instrumentation
+via `erlang:monotonic_time/0` FFI. All benchmark and validation metrics use
+measured durations instead of simulated/hardcoded values.
+
+**Key functions:**
+- `timing.measure_ms(fn)` — Measure a function's elapsed time in milliseconds
+- `timing.measure_microseconds(fn)` — Sub-millisecond precision for fast operations
+- `timing.monotonic_time_native()` — Raw monotonic clock reading
+- `timing.native_to_ms(duration)` — Convert native units to milliseconds
+- `timing.native_to_microseconds(duration)` — Convert native units to microseconds
+
+**Where timing is used:**
+- `benchmark_runner.gleam` — Suite-level total duration and per-case durations
+- `epic_validation.gleam` — Tier 1 P80 latency and Tier 2 average latency metrics
+- `accuracy_tests.gleam` — Per-fixture pipeline duration
+
+**Dialogue test:** `test/timing_instrumentation_dialogue_test.gleam` verifies
+that monotonic time returns real values, throughput is non-zero, and the
+`benchmark_performance` metric passes at 100%.
+
+```gleam
+// Example: measure Tier 1 heuristic latency
+let #(result, elapsed_us) = timing.measure_microseconds(fn() {
+  heuristics.try_heuristic_validation(formalization)
+})
+// elapsed_us is real microseconds from BEAM monotonic clock
+```
+
 ## Coverage Goals
 
 - Aim for >80% code coverage

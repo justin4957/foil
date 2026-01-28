@@ -43,6 +43,7 @@ import modal_logic/testing/test_config.{
   type Difficulty, type ExpectedValidity, Easy, ExpectedEither, ExpectedInvalid,
   ExpectedValid, Hard, Medium, Unknown as UnknownValidity,
 }
+import modal_logic/timing
 
 // =============================================================================
 // Types
@@ -599,20 +600,27 @@ pub fn run_benchmark_suite(
   suite: BenchmarkSuite,
   config: BenchmarkConfig,
 ) -> BenchmarkResults {
-  let start_time = get_current_time_ms()
+  let start_native = timing.monotonic_time_native()
 
   // Run each case and collect results
   let case_results =
     suite.test_cases
     |> list.map(fn(case_data) { run_single_case(case_data, config) })
 
-  let end_time = get_current_time_ms()
-  let total_duration = end_time - start_time
+  let end_native = timing.monotonic_time_native()
+  let elapsed_native = end_native - start_native
+  let total_duration_ms = timing.native_to_ms(elapsed_native)
+  let total_duration_us = timing.native_to_microseconds(elapsed_native)
 
   // Compute metrics
   let accuracy = compute_accuracy_metrics(case_results)
   let per_category = compute_category_results(case_results)
-  let performance = compute_performance_metrics(case_results, total_duration)
+  let performance =
+    compute_performance_metrics(
+      case_results,
+      total_duration_ms,
+      total_duration_us,
+    )
 
   BenchmarkResults(
     suite_name: suite.name,
@@ -632,7 +640,7 @@ fn run_single_case(
   case_data: BenchmarkCase,
   config: BenchmarkConfig,
 ) -> CaseResult {
-  let start_time = get_current_time_ms()
+  let start_native = timing.monotonic_time_native()
 
   // Get the system to use (default to K if not specified)
   let system = case case_data.expected_system {
@@ -657,8 +665,8 @@ fn run_single_case(
   // Run heuristic validation
   let heuristic_result = heuristics.try_heuristic_validation(formalization)
 
-  let end_time = get_current_time_ms()
-  let duration = end_time - start_time
+  let end_native = timing.monotonic_time_native()
+  let duration = timing.native_to_ms(end_native - start_native)
 
   // Determine predicted validity
   let #(predicted_valid, confidence) = case heuristic_result {
@@ -810,9 +818,15 @@ fn compute_avg_confidence(results: List(CaseResult)) -> Float {
 }
 
 /// Compute performance metrics
+///
+/// Takes both millisecond and microsecond total durations. Microsecond
+/// precision is needed for throughput calculation because fast heuristic
+/// validations can complete an entire suite in under 1ms, which would
+/// produce a 0ms total and thus 0.0 throughput at millisecond granularity.
 fn compute_performance_metrics(
   results: List(CaseResult),
-  total_duration: Int,
+  total_duration_ms: Int,
+  total_duration_us: Int,
 ) -> PerformanceMetrics {
   let durations =
     results
@@ -839,13 +853,15 @@ fn compute_performance_metrics(
   let p95 = percentile(durations, 95)
   let p99 = percentile(durations, 99)
 
-  let throughput = case total_duration {
+  // Compute throughput using microsecond precision to handle sub-ms suites.
+  // Convert microseconds to seconds: us / 1_000_000.
+  let throughput = case total_duration_us {
     0 -> 0.0
-    ms -> int.to_float(count) /. { int.to_float(ms) /. 1000.0 }
+    us -> int.to_float(count) /. { int.to_float(us) /. 1_000_000.0 }
   }
 
   PerformanceMetrics(
-    total_duration_ms: total_duration,
+    total_duration_ms: total_duration_ms,
     avg_duration_ms: avg_d,
     min_duration_ms: min_d,
     max_duration_ms: max_d,
@@ -1223,15 +1239,12 @@ fn bool_to_string(b: Bool) -> String {
 
 /// Get current timestamp
 fn get_timestamp() -> String {
-  "2026-01-16T00:00:00Z"
+  let epoch_ms = erlang_system_time_ms()
+  "epoch_ms:" <> int.to_string(epoch_ms)
 }
 
-/// Get current time in milliseconds (simulated)
-fn get_current_time_ms() -> Int {
-  // In a real implementation, this would get actual time
-  // For now, return a fixed value that allows duration calculation
-  0
-}
+@external(erlang, "os", "system_time")
+fn erlang_system_time_ms() -> Int
 
 /// Dataset type to string
 pub fn dataset_type_to_string(dataset: DatasetType) -> String {

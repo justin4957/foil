@@ -24,6 +24,7 @@ import modal_logic/testing/golden/mock_llm.{
 import modal_logic/testing/test_config.{
   type ExpectedValidity, ExpectedEither, ExpectedInvalid, ExpectedValid, Unknown,
 }
+import modal_logic/timing
 
 /// Results from accuracy testing
 pub type AccuracyResults {
@@ -169,11 +170,13 @@ fn test_fixture_accuracy(
   mock: MockLLM,
   store: GoldenStore,
 ) -> AccuracyTestResult {
+  let start_native = timing.monotonic_time_native()
+
   // Translate using mock LLM
   let #(_updated_mock, translation_result) =
     mock_llm.translate(mock, fixture.natural_language)
 
-  case translation_result {
+  let accuracy_result = case translation_result {
     Ok(response) -> {
       // Compare translation to expected
       let translation_match =
@@ -200,29 +203,40 @@ fn test_fixture_accuracy(
           response.conclusion,
         )
 
-      AccuracyTestResult(
-        fixture_id: fixture.id,
-        translation_match: translation_match,
-        logic_system_correct: logic_correct,
-        validation_correct: validation_correct,
-        golden_comparison: golden_comparison,
-        confidence: response.confidence,
-        duration_ms: 1,
+      #(
+        translation_match,
+        logic_correct,
+        validation_correct,
+        golden_comparison,
+        response.confidence,
       )
     }
     Error(_) -> {
       // Translation failed
-      AccuracyTestResult(
-        fixture_id: fixture.id,
-        translation_match: NoTranslation,
-        logic_system_correct: False,
-        validation_correct: False,
-        golden_comparison: NoBaseline,
-        confidence: 0.0,
-        duration_ms: 1,
-      )
+      #(NoTranslation, False, False, NoBaseline, 0.0)
     }
   }
+
+  let end_native = timing.monotonic_time_native()
+  let elapsed_ms = timing.native_to_ms(end_native - start_native)
+
+  let #(
+    translation_match,
+    logic_correct,
+    validation_correct,
+    golden_comparison,
+    confidence,
+  ) = accuracy_result
+
+  AccuracyTestResult(
+    fixture_id: fixture.id,
+    translation_match: translation_match,
+    logic_system_correct: logic_correct,
+    validation_correct: validation_correct,
+    golden_comparison: golden_comparison,
+    confidence: confidence,
+    duration_ms: elapsed_ms,
+  )
 }
 
 /// Compare translation output to expected
@@ -386,13 +400,20 @@ fn compute_aggregate_metrics(
       }
     })
 
+  let total_duration_ms =
+    list.fold(results, 0, fn(acc, r) { acc + r.duration_ms })
+  let avg_duration_ms = case total {
+    0 -> 0
+    result_count -> total_duration_ms / result_count
+  }
+
   let end_to_end =
     EndToEndMetrics(
       total: total,
       successful: successful,
       failed_translation: no_matches,
       failed_validation: total - validation_correct - no_matches,
-      avg_duration_ms: 1,
+      avg_duration_ms: avg_duration_ms,
     )
 
   // Overall metrics
