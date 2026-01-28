@@ -519,6 +519,51 @@ creation, regression detection (true positive and no false positive), minor
 regression handling, per-system regression, trend computation, JSON roundtrip, and
 Phase D metric integration.
 
+## Probabilistic Bounds Analytical Validation (Issue #178)
+
+Adversarial test cases validate the probabilistic logic engine against
+hand-calculated analytical solutions, ensuring bound computation, chain rule
+propagation, and interval arithmetic produce correct results for edge cases.
+
+### Test Categories
+
+| Category | Cases | Description |
+|----------|-------|-------------|
+| Near-boundary | 2 | P values at/near 0.5 threshold (0.5001 vs 0.5002) |
+| Conflicting constraints | 1 | P(A)>=0.8 AND P(A)<=0.3 (inconsistent bounds) |
+| Multi-step chains | 2 | A->B->C propagation with error accumulation |
+| Interval overlap | 1 | [0.3,0.7] intersect [0.5,0.9] = [0.5,0.7] |
+| Numerical stability | 2 | P near 0.0 (implied 1e-8) and P near 1.0 (0.9998) |
+| Config consistency | 1 | fast/default/strict produce same validity |
+| Tolerance edge | 1 | P=0.501 just above 0.5+tolerance |
+
+### Analytical Solutions Reference
+
+- **Near-boundary**: `Probable` checks `lower > 0.5 + tolerance`. With
+  default tolerance=0.0001, P(a)>=0.5001 gives lower=0.5001, and
+  `0.5001 > 0.5001` is False (strict >). P(a)>=0.5002 gives True.
+- **Chain rule (2-step)**: P(a)>=0.9, P(b|a)=0.8, P(c|b)=0.7 =>
+  P(b)>=0.72, P(c)>=0.504
+- **Interval intersection**: max(0.3,0.5)=0.5, min(0.7,0.9)=0.7
+- **Near-zero stability**: implied P(b)>=1e-8 is below tolerance, no update
+- **Near-one stability**: P(b)>=0.9999*0.9999=0.9998
+
+### Phase E Metrics (Updated)
+
+| Metric | Target | Description |
+|--------|--------|-------------|
+| probabilistic_content_detection | 100% | Detect probabilistic propositions |
+| constraint_extraction_accuracy | 95% | Extract constraints from premises |
+| chain_rule_accuracy | 90% | P(A) >= P(A\|B) * P(B) application |
+| probability_bound_accuracy | 95% | Computed bounds vs expected bounds |
+| conditional_probability_handling | 90% | Conditional probability chains |
+| probabilistic_analytical_bounds | 90% | Adversarial bounds vs analytical solutions |
+
+**Dialogue test:** `test/probabilistic_bounds_dialogue_test.gleam` verifies
+near-boundary detection, conflicting constraints, multi-step chains, interval
+overlap, numerical stability, config consistency, tolerance, and Phase E metric
+integration.
+
 ## Coverage Goals
 
 - Aim for >80% code coverage
