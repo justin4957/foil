@@ -202,6 +202,62 @@ pub type ComplexityBucket {
   ComplexFormula
 }
 
+/// Cross-validation results comparing Tier 1 heuristic answers against
+/// a ground-truth source (Tier 2 truth table for propositional formulas,
+/// or expected validity from curated fixtures).
+pub type Tier1CrossValidation {
+  Tier1CrossValidation(
+    /// Total formulas cross-validated
+    total_cross_validated: Int,
+    /// Number of formulas where Tier 1 and ground truth agree
+    agreements: Int,
+    /// Number of formulas where Tier 1 and ground truth disagree
+    disagreements: Int,
+    /// Agreement rate (agreements / total)
+    agreement_rate: Float,
+    /// False positive rate: Tier 1 says Valid but ground truth says Invalid
+    false_positive_rate: Float,
+    /// False negative rate: Tier 1 says Invalid but ground truth says Valid
+    false_negative_rate: Float,
+    /// Number of Tier 1 false positives
+    false_positive_count: Int,
+    /// Number of Tier 1 false negatives
+    false_negative_count: Int,
+    /// Per-pattern error breakdown: list of (pattern_name, errors, total, error_rate)
+    per_pattern_errors: List(PatternErrorRate),
+    /// Specific disagreement cases for regression testing
+    disagreement_cases: List(Tier1Disagreement),
+  )
+}
+
+/// Error rate for a specific heuristic pattern
+pub type PatternErrorRate {
+  PatternErrorRate(
+    /// Name of the heuristic pattern (e.g., "identity", "modus_ponens")
+    pattern_name: String,
+    /// Number of errors from this pattern
+    error_count: Int,
+    /// Total cases using this pattern
+    total_cases: Int,
+    /// Error rate for this pattern
+    error_rate: Float,
+  )
+}
+
+/// A single disagreement between Tier 1 and ground truth
+pub type Tier1Disagreement {
+  Tier1Disagreement(
+    /// Fixture or case identifier
+    case_id: String,
+    /// What Tier 1 heuristic returned
+    tier1_result: String,
+    /// What the ground truth says
+    ground_truth_result: String,
+    /// Which heuristic pattern was used
+    pattern_used: String,
+  )
+}
+
 /// Individual test result for accuracy tracking
 pub type AccuracyTestResult {
   AccuracyTestResult(
@@ -880,6 +936,382 @@ fn compute_underconfidence_rate(scored_results: List(#(Float, Float))) -> Float 
 }
 
 /// Safe division that returns 0 for divide by zero
+// =============================================================================
+// Tier 1 Cross-Validation
+// =============================================================================
+
+/// Cross-validate Tier 1 heuristic results against ground truth.
+///
+/// For each test fixture:
+/// 1. Run Tier 1 heuristic validation on the formalized argument
+/// 2. Compare the result against the fixture's expected validity
+/// 3. Track agreements, disagreements, false positives, and false negatives
+/// 4. Break down error rates by heuristic pattern
+///
+/// If Tier 1 returns None (not handled), the fixture is skipped.
+/// Ground truth comes from the fixture's expected_validity field,
+/// which is independently verified for curated fixtures.
+pub fn cross_validate_tier1(fixtures: List(TestFixture)) -> Tier1CrossValidation {
+  let cross_validation_results =
+    fixtures
+    |> list.filter_map(fn(fixture) {
+      // Build formalization from fixture
+      let formalization =
+        Formalization(
+          id: fixture.id,
+          argument_id: fixture.id,
+          logic_system: fixture.expected_logic_system,
+          premises: fixture.expected_premises,
+          conclusion: fixture.expected_conclusion,
+          assumptions: [],
+          validation: None,
+          created_at: None,
+          updated_at: None,
+        )
+
+      // Run Tier 1 only (disable Tier 2 to isolate Tier 1 behavior)
+      let tier1_only_config =
+        heuristics.HeuristicConfig(
+          enable_tier1: True,
+          enable_tier2: False,
+          max_truth_table_vars: 0,
+        )
+
+      case
+        heuristics.try_heuristic_validation_with_config(
+          formalization,
+          tier1_only_config,
+        )
+      {
+        Some(heuristic_result) -> {
+          let tier1_says_valid = case heuristic_result.result {
+            Valid -> True
+            _ -> False
+          }
+
+          let expected_valid = case fixture.expected_validity {
+            ExpectedValid -> Some(True)
+            ExpectedInvalid(_) -> Some(False)
+            _ -> None
+          }
+
+          case expected_valid {
+            Some(ground_truth_valid) -> {
+              let agrees = tier1_says_valid == ground_truth_valid
+              let is_false_positive = tier1_says_valid && !ground_truth_valid
+              let is_false_negative = !tier1_says_valid && ground_truth_valid
+
+              Ok(
+                #(
+                  fixture.id,
+                  agrees,
+                  is_false_positive,
+                  is_false_negative,
+                  heuristic_result.explanation,
+                  case tier1_says_valid {
+                    True -> "Valid"
+                    False -> "Invalid"
+                  },
+                  case ground_truth_valid {
+                    True -> "Valid"
+                    False -> "Invalid"
+                  },
+                ),
+              )
+            }
+            None -> Error(Nil)
+          }
+        }
+        None -> Error(Nil)
+      }
+    })
+
+  let total_cross_validated = list.length(cross_validation_results)
+
+  case total_cross_validated {
+    0 ->
+      Tier1CrossValidation(
+        total_cross_validated: 0,
+        agreements: 0,
+        disagreements: 0,
+        agreement_rate: 1.0,
+        false_positive_rate: 0.0,
+        false_negative_rate: 0.0,
+        false_positive_count: 0,
+        false_negative_count: 0,
+        per_pattern_errors: [],
+        disagreement_cases: [],
+      )
+    _ -> {
+      let agreements =
+        list.count(cross_validation_results, fn(entry) {
+          let #(_, agrees, _, _, _, _, _) = entry
+          agrees
+        })
+
+      let disagreements = total_cross_validated - agreements
+
+      let false_positive_count =
+        list.count(cross_validation_results, fn(entry) {
+          let #(_, _, is_fp, _, _, _, _) = entry
+          is_fp
+        })
+
+      let false_negative_count =
+        list.count(cross_validation_results, fn(entry) {
+          let #(_, _, _, is_fn, _, _, _) = entry
+          is_fn
+        })
+
+      let agreement_rate =
+        int.to_float(agreements) /. int.to_float(total_cross_validated)
+
+      let false_positive_rate =
+        int.to_float(false_positive_count)
+        /. int.to_float(total_cross_validated)
+
+      let false_negative_rate =
+        int.to_float(false_negative_count)
+        /. int.to_float(total_cross_validated)
+
+      // Compute per-pattern error rates
+      let per_pattern_errors =
+        compute_per_pattern_errors(cross_validation_results)
+
+      // Collect disagreement cases
+      let disagreement_cases =
+        cross_validation_results
+        |> list.filter_map(fn(entry) {
+          let #(case_id, agrees, _, _, explanation, tier1_str, gt_str) = entry
+          case agrees {
+            True -> Error(Nil)
+            False ->
+              Ok(Tier1Disagreement(
+                case_id: case_id,
+                tier1_result: tier1_str,
+                ground_truth_result: gt_str,
+                pattern_used: extract_pattern_name(explanation),
+              ))
+          }
+        })
+
+      Tier1CrossValidation(
+        total_cross_validated: total_cross_validated,
+        agreements: agreements,
+        disagreements: disagreements,
+        agreement_rate: agreement_rate,
+        false_positive_rate: false_positive_rate,
+        false_negative_rate: false_negative_rate,
+        false_positive_count: false_positive_count,
+        false_negative_count: false_negative_count,
+        per_pattern_errors: per_pattern_errors,
+        disagreement_cases: disagreement_cases,
+      )
+    }
+  }
+}
+
+/// Compute error rates per heuristic pattern from cross-validation results.
+fn compute_per_pattern_errors(
+  results: List(#(String, Bool, Bool, Bool, String, String, String)),
+) -> List(PatternErrorRate) {
+  // Extract unique pattern names
+  let pattern_names =
+    results
+    |> list.map(fn(entry) {
+      let #(_, _, _, _, explanation, _, _) = entry
+      extract_pattern_name(explanation)
+    })
+    |> list.unique()
+
+  pattern_names
+  |> list.map(fn(pattern_name) {
+    let pattern_results =
+      list.filter(results, fn(entry) {
+        let #(_, _, _, _, explanation, _, _) = entry
+        extract_pattern_name(explanation) == pattern_name
+      })
+
+    let total_cases = list.length(pattern_results)
+    let error_count =
+      list.count(pattern_results, fn(entry) {
+        let #(_, agrees, _, _, _, _, _) = entry
+        !agrees
+      })
+
+    let error_rate = case total_cases {
+      0 -> 0.0
+      _ -> int.to_float(error_count) /. int.to_float(total_cases)
+    }
+
+    PatternErrorRate(
+      pattern_name: pattern_name,
+      error_count: error_count,
+      total_cases: total_cases,
+      error_rate: error_rate,
+    )
+  })
+}
+
+/// Extract a short pattern name from a heuristic explanation string.
+///
+/// Heuristic explanations look like:
+/// - "Conclusion is identical to premise" → "identity"
+/// - "Tautology detected: p → p" → "tautology"
+/// - "Modus ponens: p → q, p ⊢ q" → "modus_ponens"
+/// - "Modal K distribution axiom" → "k_distribution"
+/// etc.
+pub fn extract_pattern_name(explanation: String) -> String {
+  let lowered = string.lowercase(explanation)
+  // Use sequential contains checks (Gleam guards can't call functions)
+  classify_pattern(lowered)
+}
+
+fn classify_pattern(lowered: String) -> String {
+  case
+    string.contains(lowered, "identity")
+    || string.contains(lowered, "identical")
+  {
+    True -> "identity"
+    False ->
+      case string.contains(lowered, "tautology") {
+        True -> "tautology"
+        False ->
+          case
+            string.contains(lowered, "contradiction")
+            && string.contains(lowered, "premise")
+          {
+            True -> "premise_contradiction"
+            False ->
+              case string.contains(lowered, "contradiction") {
+                True -> "conclusion_contradiction"
+                False -> classify_inference_pattern(lowered)
+              }
+          }
+      }
+  }
+}
+
+fn classify_inference_pattern(lowered: String) -> String {
+  case string.contains(lowered, "modus ponens") {
+    True -> "modus_ponens"
+    False ->
+      case string.contains(lowered, "modus tollens") {
+        True -> "modus_tollens"
+        False ->
+          case string.contains(lowered, "hypothetical syllogism") {
+            True -> "hypothetical_syllogism"
+            False ->
+              case string.contains(lowered, "disjunctive syllogism") {
+                True -> "disjunctive_syllogism"
+                False ->
+                  case
+                    string.contains(lowered, "conjunction")
+                    && string.contains(lowered, "elim")
+                  {
+                    True -> "conjunction_elimination"
+                    False ->
+                      case
+                        string.contains(lowered, "conjunction")
+                        && string.contains(lowered, "intro")
+                      {
+                        True -> "conjunction_introduction"
+                        False -> classify_fallacy_pattern(lowered)
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn classify_fallacy_pattern(lowered: String) -> String {
+  case string.contains(lowered, "double negation") {
+    True -> "double_negation_elimination"
+    False ->
+      case string.contains(lowered, "disjunction intro") {
+        True -> "disjunction_introduction"
+        False ->
+          case
+            string.contains(lowered, "affirming")
+            && string.contains(lowered, "consequent")
+          {
+            True -> "affirming_consequent"
+            False ->
+              case
+                string.contains(lowered, "denying")
+                && string.contains(lowered, "antecedent")
+              {
+                True -> "denying_antecedent"
+                False ->
+                  case
+                    string.contains(lowered, "affirming")
+                    && string.contains(lowered, "disjunct")
+                  {
+                    True -> "affirming_disjunct"
+                    False -> classify_modal_pattern(lowered)
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn classify_modal_pattern(lowered: String) -> String {
+  case
+    string.contains(lowered, "k distribution")
+    || string.contains(lowered, "k-distribution")
+    || string.contains(lowered, "modal distribution")
+  {
+    True -> "k_distribution"
+    False ->
+      case
+        string.contains(lowered, "t axiom")
+        || string.contains(lowered, "t-axiom")
+        || string.contains(lowered, "reflexivity")
+      {
+        True -> "t_axiom"
+        False ->
+          case
+            string.contains(lowered, "4 axiom")
+            || string.contains(lowered, "4-axiom")
+            || string.contains(lowered, "transitivity")
+          {
+            True -> "4_axiom"
+            False ->
+              case
+                string.contains(lowered, "5 axiom")
+                || string.contains(lowered, "5-axiom")
+                || string.contains(lowered, "euclidean")
+              {
+                True -> "5_axiom"
+                False ->
+                  case
+                    string.contains(lowered, "d axiom")
+                    || string.contains(lowered, "d-axiom")
+                    || string.contains(lowered, "serial")
+                  {
+                    True -> "d_axiom"
+                    False ->
+                      case string.contains(lowered, "necessitation") {
+                        True -> "necessitation"
+                        False ->
+                          case string.contains(lowered, "modal") {
+                            True -> "modal_other"
+                            False ->
+                              case string.contains(lowered, "truth table") {
+                                True -> "truth_table"
+                                False -> "unknown"
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn safe_divide(numerator: Float, denominator: Float) -> Float {
   case denominator {
     0.0 -> 0.0
