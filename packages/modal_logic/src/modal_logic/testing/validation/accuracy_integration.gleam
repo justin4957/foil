@@ -161,6 +161,8 @@ pub fn convert_to_accuracy_metrics(
     translation: translation,
     logic_detection: logic_detection,
     validation: validation,
+    validation_by_system: [],
+    validation_by_complexity: [],
     end_to_end: end_to_end,
     overall: overall,
   )

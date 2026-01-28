@@ -206,6 +206,51 @@ rather than using confidence thresholds as a proxy.
 **Dialogue test:** `test/validation_correctness_dialogue_test.gleam` verifies
 confusion matrix computation with known valid and invalid arguments.
 
+### Per-System Validation Breakdown
+
+`AccuracyResults.validation_by_system` contains a `List(#(String, ValidationMetrics))`
+with a full confusion matrix (TP/TN/FP/FN/precision/recall/F1) for each modal
+logic system that has fixtures:
+
+- **K**: Base modal logic
+- **T**: Reflexive frames
+- **K4**: Transitive frames
+- **S4**: Reflexive + transitive
+- **S5**: Equivalence relation
+- **KD**: Deontic (serial)
+- **KD45**: Doxastic (serial + transitive + euclidean)
+
+Use `find_lowest_f1_systems(by_system)` to identify systems with the weakest
+validation accuracy, sorted by F1 score ascending.
+
+### Per-Complexity Validation Breakdown
+
+`AccuracyResults.validation_by_complexity` groups results by formula complexity
+based on modal operator count:
+
+- **Simple**: 0-2 modal operators
+- **Medium**: 3-5 modal operators
+- **Complex**: 6+ modal operators
+
+The `count_modal_operators(proposition)` function recursively counts Necessary,
+Possible, Obligatory, Permitted, Knows, and Believes operators in a formula.
+
+### System Boundary Fixtures
+
+`fixtures.system_boundary_fixtures()` provides test cases that exercise
+system-specific boundary behavior:
+
+- K4: Valid (4-axiom) and invalid (T-axiom fails without reflexivity)
+- KD45: Valid (belief distribution) and invalid (belief not veridical)
+- T: Invalid (4-axiom fails without transitivity)
+- S4: Invalid (5-axiom fails without euclidean property)
+- S5: Invalid (possibility does not imply necessity)
+- KD: Invalid (permission does not imply obligation)
+
+**Dialogue test:** `test/per_system_accuracy_dialogue_test.gleam` verifies
+per-system confusion matrices, complexity bucketing, lowest F1 identification,
+and system boundary fixture coverage.
+
 ## Timing and Performance Measurement
 
 The `modal_logic/timing` module provides real BEAM monotonic time instrumentation

@@ -41,6 +41,10 @@ pub type AccuracyResults {
     logic_detection: LogicDetectionMetrics,
     /// Validation accuracy metrics
     validation: ValidationMetrics,
+    /// Per-system validation accuracy breakdown
+    validation_by_system: List(#(String, ValidationMetrics)),
+    /// Validation accuracy by formula complexity bucket
+    validation_by_complexity: List(#(String, ValidationMetrics)),
     /// End-to-end pipeline metrics
     end_to_end: EndToEndMetrics,
     /// Overall accuracy summary
@@ -145,6 +149,16 @@ pub type ValidationClassification {
   Indeterminate
 }
 
+/// Formula complexity bucket based on modal operator count
+pub type ComplexityBucket {
+  /// 0-2 modal operators
+  SimpleFormula
+  /// 3-5 modal operators
+  MediumFormula
+  /// 6+ modal operators
+  ComplexFormula
+}
+
 /// Individual test result for accuracy tracking
 pub type AccuracyTestResult {
   AccuracyTestResult(
@@ -162,6 +176,8 @@ pub type AccuracyTestResult {
     predicted_validity: Option(Bool),
     /// The expected validity from the test fixture
     expected_validity_bool: Option(Bool),
+    /// Formula complexity bucket
+    complexity_bucket: ComplexityBucket,
     golden_comparison: GoldenComparison,
     confidence: Float,
     duration_ms: Int,
@@ -273,6 +289,10 @@ fn test_fixture_accuracy(
           response.conclusion,
         )
 
+      // Compute formula complexity from translated propositions
+      let complexity =
+        classify_complexity(response.premises, response.conclusion)
+
       #(
         translation_match,
         logic_correct,
@@ -282,12 +302,19 @@ fn test_fixture_accuracy(
         classification,
         predicted_validity,
         expected_validity_bool,
+        complexity,
         golden_comparison,
         response.confidence,
       )
     }
     Error(_) -> {
-      // Translation failed — no validation possible
+      // Translation failed — compute complexity from expected propositions
+      let complexity =
+        classify_complexity(
+          fixture.expected_premises,
+          fixture.expected_conclusion,
+        )
+
       #(
         NoTranslation,
         False,
@@ -297,6 +324,7 @@ fn test_fixture_accuracy(
         Indeterminate,
         None,
         None,
+        complexity,
         NoBaseline,
         0.0,
       )
@@ -315,6 +343,7 @@ fn test_fixture_accuracy(
     classification,
     predicted_validity,
     expected_validity_bool,
+    complexity,
     golden_comparison,
     confidence,
   ) = accuracy_result
@@ -329,6 +358,7 @@ fn test_fixture_accuracy(
     validation_classification: classification,
     predicted_validity: predicted_validity,
     expected_validity_bool: expected_validity_bool,
+    complexity_bucket: complexity,
     golden_comparison: golden_comparison,
     confidence: confidence,
     duration_ms: elapsed_ms,
@@ -569,10 +599,18 @@ fn compute_aggregate_metrics(
       grade: grade,
     )
 
+  // Per-system validation breakdown
+  let validation_by_system = compute_validation_by_system(results)
+
+  // Per-complexity validation breakdown
+  let validation_by_complexity = compute_validation_by_complexity(results)
+
   AccuracyResults(
     translation: translation,
     logic_detection: logic_detection,
     validation: validation,
+    validation_by_system: validation_by_system,
+    validation_by_complexity: validation_by_complexity,
     end_to_end: end_to_end,
     overall: overall,
   )
@@ -972,7 +1010,7 @@ fn is_d_axiom_argument(
 }
 
 // =============================================================================
-// Per-System Breakdown
+// Per-System Breakdown (Logic Detection)
 // =============================================================================
 
 /// Compute per-system accuracy breakdown from test results.
@@ -1001,4 +1039,191 @@ fn compute_by_system_breakdown(
       }
     }
   })
+}
+
+// =============================================================================
+// Per-System Validation Metrics
+// =============================================================================
+
+/// Compute per-system validation confusion matrix breakdown.
+///
+/// Groups results by expected logic system and computes a full
+/// ValidationMetrics (TP/TN/FP/FN/precision/recall/F1) for each system.
+fn compute_validation_by_system(
+  results: List(AccuracyTestResult),
+) -> List(#(String, ValidationMetrics)) {
+  let system_names = ["K", "T", "K4", "S4", "S5", "KD", "KD45"]
+
+  system_names
+  |> list.filter_map(fn(system_name) {
+    let system_results =
+      list.filter(results, fn(r) {
+        multi_system.logic_system_to_string(r.expected_logic_system)
+        == system_name
+      })
+
+    case list.length(system_results) {
+      0 -> Error(Nil)
+      _ -> {
+        let metrics = compute_validation_metrics(system_results)
+        Ok(#(system_name, metrics))
+      }
+    }
+  })
+}
+
+// =============================================================================
+// Per-Complexity Validation Metrics
+// =============================================================================
+
+/// Compute validation metrics grouped by formula complexity bucket.
+fn compute_validation_by_complexity(
+  results: List(AccuracyTestResult),
+) -> List(#(String, ValidationMetrics)) {
+  let buckets = [
+    #("simple", SimpleFormula),
+    #("medium", MediumFormula),
+    #("complex", ComplexFormula),
+  ]
+
+  buckets
+  |> list.filter_map(fn(bucket_entry) {
+    let #(bucket_name, bucket_type) = bucket_entry
+    let bucket_results =
+      list.filter(results, fn(r) { r.complexity_bucket == bucket_type })
+
+    case list.length(bucket_results) {
+      0 -> Error(Nil)
+      _ -> {
+        let metrics = compute_validation_metrics(bucket_results)
+        Ok(#(bucket_name, metrics))
+      }
+    }
+  })
+}
+
+/// Compute ValidationMetrics from a subset of test results.
+///
+/// Reusable function that computes TP/TN/FP/FN/precision/recall/F1
+/// from any list of AccuracyTestResult, used for both per-system
+/// and per-complexity breakdowns.
+pub fn compute_validation_metrics(
+  results: List(AccuracyTestResult),
+) -> ValidationMetrics {
+  let total = list.length(results)
+
+  let true_positives =
+    list.count(results, fn(r) { r.validation_classification == TruePositive })
+  let true_negatives =
+    list.count(results, fn(r) { r.validation_classification == TrueNegative })
+  let false_positives =
+    list.count(results, fn(r) { r.validation_classification == FalsePositive })
+  let false_negatives =
+    list.count(results, fn(r) { r.validation_classification == FalseNegative })
+
+  let precision =
+    safe_divide(
+      int.to_float(true_positives),
+      int.to_float(true_positives + false_positives),
+    )
+  let recall =
+    safe_divide(
+      int.to_float(true_positives),
+      int.to_float(true_positives + false_negatives),
+    )
+  let f1_score = safe_divide(2.0 *. precision *. recall, precision +. recall)
+
+  ValidationMetrics(
+    total: total,
+    true_positives: true_positives,
+    true_negatives: true_negatives,
+    false_positives: false_positives,
+    false_negatives: false_negatives,
+    precision: precision,
+    recall: recall,
+    f1_score: f1_score,
+  )
+}
+
+// =============================================================================
+// Formula Complexity Analysis
+// =============================================================================
+
+/// Count the number of modal operators in a proposition (recursively).
+///
+/// Modal operators include: Necessary, Possible, Obligatory, Permitted,
+/// Knows, Believes. Nested operators are counted individually.
+pub fn count_modal_operators(prop: Proposition) -> Int {
+  case prop {
+    Atom(_) -> 0
+    Not(inner) -> count_modal_operators(inner)
+    And(left, right) ->
+      count_modal_operators(left) + count_modal_operators(right)
+    Or(left, right) ->
+      count_modal_operators(left) + count_modal_operators(right)
+    Implies(left, right) ->
+      count_modal_operators(left) + count_modal_operators(right)
+    Necessary(inner) -> 1 + count_modal_operators(inner)
+    Possible(inner) -> 1 + count_modal_operators(inner)
+    Obligatory(inner) -> 1 + count_modal_operators(inner)
+    Permitted(inner) -> 1 + count_modal_operators(inner)
+    Knows(_, inner) -> 1 + count_modal_operators(inner)
+    Believes(_, inner) -> 1 + count_modal_operators(inner)
+    _ -> 0
+  }
+}
+
+/// Classify a formula into a complexity bucket based on total modal operator count.
+///
+/// - Simple: 0-2 modal operators
+/// - Medium: 3-5 modal operators
+/// - Complex: 6+ modal operators
+pub fn classify_complexity(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> ComplexityBucket {
+  let total_operators =
+    list.fold(premises, 0, fn(acc, premise) {
+      acc + count_modal_operators(premise)
+    })
+    + count_modal_operators(conclusion)
+
+  case total_operators {
+    n if n <= 2 -> SimpleFormula
+    n if n <= 5 -> MediumFormula
+    _ -> ComplexFormula
+  }
+}
+
+/// Convert a ComplexityBucket to a human-readable string.
+pub fn complexity_bucket_to_string(bucket: ComplexityBucket) -> String {
+  case bucket {
+    SimpleFormula -> "simple"
+    MediumFormula -> "medium"
+    ComplexFormula -> "complex"
+  }
+}
+
+/// Find the systems with the lowest F1 scores from per-system metrics.
+///
+/// Returns systems sorted by F1 score ascending (worst first), excluding
+/// systems with no classified results (F1 = 0.0 and total = 0).
+pub fn find_lowest_f1_systems(
+  by_system: List(#(String, ValidationMetrics)),
+) -> List(#(String, Float)) {
+  by_system
+  |> list.filter(fn(entry) {
+    let #(_, metrics) = entry
+    // Only include systems that have some classified results
+    metrics.true_positives
+    + metrics.true_negatives
+    + metrics.false_positives
+    + metrics.false_negatives
+    > 0
+  })
+  |> list.map(fn(entry) {
+    let #(system_name, metrics) = entry
+    #(system_name, metrics.f1_score)
+  })
+  |> list.sort(fn(a, b) { float.compare(a.1, b.1) })
 }

@@ -4,8 +4,8 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
 import modal_logic/proposition.{
-  type LogicSystem, type Proposition, And, Atom, Believes, Implies, K, KD, Knows,
-  Necessary, Not, Obligatory, Or, Permitted, Possible, S4, S5, T,
+  type LogicSystem, type Proposition, And, Atom, Believes, Implies, K, K4, KD,
+  KD45, Knows, Necessary, Not, Obligatory, Or, Permitted, Possible, S4, S5, T,
 }
 import modal_logic/testing/test_config.{
   type Difficulty, type ExpectedValidity, type FixtureCategory, ClassicArgument,
@@ -53,6 +53,7 @@ pub fn all_fixtures() -> List(TestFixture) {
     classic_argument_fixtures(),
     modal_theorem_fixtures(),
     edge_case_fixtures(),
+    system_boundary_fixtures(),
   ])
 }
 
@@ -520,6 +521,162 @@ pub fn edge_case_fixtures() -> List(TestFixture) {
       difficulty: Hard,
       tags: ["edge-case", "many-premises"],
       source: None,
+    ),
+  ]
+}
+
+/// System boundary fixtures: tests that exercise system-specific behavior.
+///
+/// These fixtures ensure each supported logic system has both valid and
+/// invalid arguments, enabling meaningful per-system confusion matrices.
+/// Includes K4 and KD45 fixtures (previously missing) and invalid arguments
+/// for T, S4, and S5 (previously only had valid arguments).
+pub fn system_boundary_fixtures() -> List(TestFixture) {
+  [
+    // =========================================================================
+    // K4: Transitive frames (□p → □□p valid, but □p → p not valid)
+    // =========================================================================
+    // K4 Valid: 4-axiom (positive introspection)
+    TestFixture(
+      id: "boundary-k4-valid-introspection",
+      name: "K4: Positive Introspection Valid",
+      category: ModalTheorem,
+      natural_language: "If P is necessarily true, then it is necessarily necessary that P. Given P is necessary, conclude necessarily necessarily P.",
+      expected_logic_system: K4,
+      expected_premises: [Necessary(Atom("P"))],
+      expected_conclusion: Necessary(Necessary(Atom("P"))),
+      expected_validity: ExpectedValid,
+      difficulty: Easy,
+      tags: ["valid", "k4", "4-axiom", "boundary"],
+      source: Some("K4 modal logic"),
+    ),
+    // K4 Invalid: T-axiom fails in K4 (reflexivity not guaranteed)
+    TestFixture(
+      id: "boundary-k4-invalid-reflexivity",
+      name: "K4: T-Axiom Fails (No Reflexivity)",
+      category: ModalTheorem,
+      natural_language: "P is necessarily true. Therefore P is true. (Fails in K4 — no reflexivity.)",
+      expected_logic_system: K4,
+      expected_premises: [Necessary(Atom("P"))],
+      expected_conclusion: Atom("P"),
+      expected_validity: ExpectedInvalid(Some(
+        "K4 lacks reflexivity; □p does not entail p",
+      )),
+      difficulty: Easy,
+      tags: ["invalid", "k4", "no-reflexivity", "boundary"],
+      source: Some("K4 modal logic"),
+    ),
+    // =========================================================================
+    // KD45: Serial + transitive + euclidean (belief logic)
+    // =========================================================================
+    // KD45 Valid: Belief distribution (K-axiom applies to belief)
+    TestFixture(
+      id: "boundary-kd45-valid-belief-distribution",
+      name: "KD45: Belief Distribution Valid",
+      category: ClassicArgument,
+      natural_language: "Carol believes that if it is cold then it snows. Carol believes it is cold. Therefore, Carol believes it snows.",
+      expected_logic_system: KD45,
+      expected_premises: [
+        Believes("carol", Implies(Atom("cold"), Atom("snows"))),
+        Believes("carol", Atom("cold")),
+      ],
+      expected_conclusion: Believes("carol", Atom("snows")),
+      expected_validity: ExpectedValid,
+      difficulty: Medium,
+      tags: ["valid", "kd45", "belief", "distribution", "boundary"],
+      source: Some("Doxastic logic"),
+    ),
+    // KD45 Invalid: Belief does not imply truth (no veridicality)
+    TestFixture(
+      id: "boundary-kd45-invalid-no-veridicality",
+      name: "KD45: Belief Does Not Imply Truth",
+      category: ClassicArgument,
+      natural_language: "Carol believes it is sunny. Therefore, it is sunny. (Fails — belief is not veridical.)",
+      expected_logic_system: KD45,
+      expected_premises: [Believes("carol", Atom("sunny"))],
+      expected_conclusion: Atom("sunny"),
+      expected_validity: ExpectedInvalid(Some(
+        "KD45 lacks veridicality; belief does not entail truth",
+      )),
+      difficulty: Easy,
+      tags: ["invalid", "kd45", "no-veridicality", "boundary"],
+      source: Some("Doxastic logic"),
+    ),
+    // =========================================================================
+    // T: Reflexive frames — invalid argument specific to T
+    // =========================================================================
+    // T Invalid: 4-axiom fails in T (no transitivity)
+    TestFixture(
+      id: "boundary-t-invalid-no-transitivity",
+      name: "T: 4-Axiom Fails (No Transitivity)",
+      category: ModalTheorem,
+      natural_language: "P is necessarily true. Therefore it is necessarily necessarily true. (Fails in T — no transitivity.)",
+      expected_logic_system: T,
+      expected_premises: [Necessary(Atom("P"))],
+      expected_conclusion: Necessary(Necessary(Atom("P"))),
+      expected_validity: ExpectedInvalid(Some(
+        "T lacks transitivity; □p does not entail □□p",
+      )),
+      difficulty: Easy,
+      tags: ["invalid", "t", "no-transitivity", "boundary"],
+      source: Some("T modal logic"),
+    ),
+    // =========================================================================
+    // S4: Reflexive + transitive — invalid argument specific to S4
+    // =========================================================================
+    // S4 Invalid: 5-axiom fails in S4 (no euclidean property)
+    TestFixture(
+      id: "boundary-s4-invalid-no-euclidean",
+      name: "S4: 5-Axiom Fails (No Euclidean)",
+      category: ModalTheorem,
+      natural_language: "P is possibly true. Therefore P is necessarily possible. (Fails in S4 — no euclidean property.)",
+      expected_logic_system: S4,
+      expected_premises: [Possible(Atom("P"))],
+      expected_conclusion: Necessary(Possible(Atom("P"))),
+      expected_validity: ExpectedInvalid(Some(
+        "S4 lacks euclidean property; ◇p does not entail □◇p",
+      )),
+      difficulty: Medium,
+      tags: ["invalid", "s4", "no-euclidean", "boundary"],
+      source: Some("S4 modal logic"),
+    ),
+    // =========================================================================
+    // S5: Equivalence relation — invalid argument specific to S5
+    // =========================================================================
+    // S5 Invalid: Possibility does not imply necessity (even in S5)
+    TestFixture(
+      id: "boundary-s5-invalid-possible-to-necessary",
+      name: "S5: Possibility Does Not Imply Necessity",
+      category: ClassicArgument,
+      natural_language: "It is possible that P. Therefore P is necessary. (Invalid even in S5.)",
+      expected_logic_system: S5,
+      expected_premises: [Possible(Atom("P"))],
+      expected_conclusion: Necessary(Atom("P")),
+      expected_validity: ExpectedInvalid(Some(
+        "◇p does not entail □p in any normal modal logic",
+      )),
+      difficulty: Easy,
+      tags: ["invalid", "s5", "modal-confusion", "boundary"],
+      source: Some("S5 modal logic"),
+    ),
+    // =========================================================================
+    // KD: Deontic — additional invalid argument
+    // =========================================================================
+    // KD Invalid: Permission does not imply obligation
+    TestFixture(
+      id: "boundary-kd-invalid-permission-to-obligation",
+      name: "KD: Permission Does Not Imply Obligation",
+      category: ClassicArgument,
+      natural_language: "It is permitted that you rest. Therefore it is obligatory that you rest. (Fails — permission does not imply obligation.)",
+      expected_logic_system: KD,
+      expected_premises: [Permitted(Atom("rest"))],
+      expected_conclusion: Obligatory(Atom("rest")),
+      expected_validity: ExpectedInvalid(Some(
+        "Permission does not entail obligation in deontic logic",
+      )),
+      difficulty: Easy,
+      tags: ["invalid", "kd", "deontic", "boundary"],
+      source: Some("Deontic logic"),
     ),
   ]
 }
