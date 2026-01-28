@@ -314,6 +314,65 @@ let detected = accuracy_tests.detect_logic_system(premises, conclusion)
 // operator analysis and axiom pattern matching
 ```
 
+## Curated Ground-Truth Fixtures
+
+The `fixtures/ground_truth.gleam` module provides 52 independently verified test
+cases for measuring accuracy against real logic problems rather than synthetic
+generated data.
+
+### Categories (10)
+
+- **Propositional** (8): Modus ponens, modus tollens, hypothetical syllogism,
+  disjunctive syllogism, affirming consequent, denying antecedent, constructive
+  dilemma, ex falso quodlibet
+- **Modal K** (5): Distribution axiom, necessitation, invalid possibility
+  distribution, necessity-conjunction, invalid necessity-to-truth
+- **Modal T** (4): T-axiom, truth implies possibility, invalid 4-axiom, K+T combined
+- **Modal S4** (4): 4-axiom, possible collapse, invalid 5-axiom, T-axiom holds
+- **Modal S5** (5): 5-axiom, possible-necessary collapse, invalid possible-to-necessary,
+  iteration collapse, possibility iteration
+- **Deontic** (4): D-axiom, distribution, invalid permission-to-obligation,
+  invalid obligation-to-truth
+- **Epistemic** (5): Knowledge distribution, veridicality, positive introspection,
+  belief not veridical, belief consistency
+- **Cross-system** (5): T-not-K reflexivity, S4-not-T transitivity, S5-not-S4
+  euclidean, K4-not-K transitivity, non-sequitur
+- **Deep nesting** (5): Triple necessity S4, mixed modality S5, alternating S5,
+  triple necessity T, different atoms
+- **Tier boundary** (7): Identity, contraposition, complex propositional,
+  modal-propositional mix, countermodel needed, conjunction intro, modal invalid
+
+### Source Documentation
+
+Every fixture includes a `source` field documenting its justification (axiom
+schema, standard textbook result, well-known fallacy, etc.). This ensures each
+expected validity is independently verified rather than assumed.
+
+### Usage
+
+```gleam
+import modal_logic/testing/fixtures/ground_truth
+
+// Get all curated fixtures
+let fixtures = ground_truth.all_ground_truth_fixtures()
+// Returns 52 TestFixture values
+
+// Run accuracy against curated fixtures
+let results = accuracy_tests.run_accuracy_tests(fixtures)
+// Results include per-system and per-complexity breakdowns
+```
+
+### Phase D Integration
+
+The `validate_curated_accuracy()` metric in `epic_validation.gleam` runs the
+full accuracy pipeline against curated fixtures and reports F1 score with
+per-system and per-complexity breakdown. Target: 50% F1 (curated cases are
+harder than generated ones).
+
+**Dialogue test:** `test/ground_truth_dialogue_test.gleam` verifies fixture
+count (>= 50), category coverage, source documentation, accuracy pipeline
+integration, per-system/per-complexity breakdowns, and Phase D metric wiring.
+
 ## Coverage Goals
 
 - Aim for >80% code coverage
