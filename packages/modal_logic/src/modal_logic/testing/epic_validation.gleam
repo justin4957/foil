@@ -44,6 +44,7 @@ import modal_logic/proposition.{
   Possible, ProbAtLeast, ProbAtMost, ProbRange, Probable, S4, S5, T,
 }
 import modal_logic/reason_chain
+import modal_logic/timing
 import modal_logic/validator.{ValidationResponse}
 import modal_logic/validity_trace
 
@@ -265,41 +266,37 @@ fn validate_phase_a(config: EpicValidationConfig) -> PhaseValidationResult {
 
 /// Validate Tier 1 syntactic latency (<1ms target)
 pub fn validate_tier1_latency(sample_size: Int) -> MetricResult {
-  // Run Tier 1 validation on sample formulas
+  // Run Tier 1 validation on sample formulas with real timing
   let test_cases = generate_tier1_test_cases(sample_size)
 
-  let latencies =
+  // Measure each case in microseconds for sub-ms precision
+  let latency_microseconds =
     test_cases
     |> list.map(fn(formalization) {
-      let start = 0
-      // In real implementation, would use actual timing
-      let _result = heuristics.try_heuristic_validation(formalization)
-      let end = 0
-      // Simulated: Tier 1 is < 1ms
-      end - start
+      let #(_result, elapsed_us) =
+        timing.measure_microseconds(fn() {
+          heuristics.try_heuristic_validation(formalization)
+        })
+      elapsed_us
     })
 
-  // Calculate p80 latency
-  let sorted = list.sort(latencies, int.compare)
-  let p80_index = { sample_size * 80 } / 100
-  let p80_latency = case list.drop(sorted, p80_index) {
-    [val, ..] -> val
-    [] -> 0
-  }
-
-  // Simulated result - Tier 1 is always fast
-  let actual_p80 = 0.5
-  // 0.5ms simulated
+  // Calculate p80 latency in milliseconds from microsecond measurements
+  let sorted = list.sort(latency_microseconds, int.compare)
+  let p80_us = timing.percentile(sorted, 80)
+  let actual_p80_ms = int.to_float(p80_us) /. 1000.0
 
   MetricResult(
     name: "tier1_latency_p80",
     target: 1.0,
-    actual: actual_p80,
-    passed: actual_p80 <. 1.0,
+    actual: actual_p80_ms,
+    passed: actual_p80_ms <. 1.0,
     samples: sample_size,
     unit: "ms",
     details: Some(
-      "Tier 1 syntactic pattern matching latency at 80th percentile",
+      "Tier 1 syntactic pattern matching latency at 80th percentile. "
+      <> "P80: "
+      <> float_to_string_2dp(actual_p80_ms)
+      <> "ms (measured via BEAM monotonic clock)",
     ),
   )
 }
@@ -309,29 +306,38 @@ pub fn validate_tier2_latency(sample_size: Int) -> MetricResult {
   // Tier 2 handles propositional formulas via truth table
   let test_cases = generate_tier2_test_cases(sample_size)
 
-  let latencies =
+  // Measure each case in microseconds for accurate sub-ms timing
+  let latency_microseconds =
     test_cases
     |> list.map(fn(formalization) {
-      let _result = heuristics.try_heuristic_validation(formalization)
-      // Simulated latency based on variable count
-      let var_count = count_variables_in_formalization(formalization)
-      // 2^n assignments * 0.1ms per assignment
-      int.to_float(power_of_2(var_count)) *. 0.1
+      let #(_result, elapsed_us) =
+        timing.measure_microseconds(fn() {
+          heuristics.try_heuristic_validation(formalization)
+        })
+      elapsed_us
     })
 
-  let avg_latency = case list.length(latencies) {
+  // Calculate average latency in milliseconds from microsecond measurements
+  let total_us = list.fold(latency_microseconds, 0, fn(acc, us) { acc + us })
+  let avg_latency_ms = case list.length(latency_microseconds) {
     0 -> 0.0
-    n -> list.fold(latencies, 0.0, float.add) /. int.to_float(n)
+    sample_count ->
+      int.to_float(total_us) /. int.to_float(sample_count) /. 1000.0
   }
 
   MetricResult(
     name: "tier2_latency_avg",
     target: 50.0,
-    actual: avg_latency,
-    passed: avg_latency <. 50.0,
+    actual: avg_latency_ms,
+    passed: avg_latency_ms <. 50.0,
     samples: sample_size,
     unit: "ms",
-    details: Some("Tier 2 truth table analysis average latency"),
+    details: Some(
+      "Tier 2 truth table analysis average latency. "
+      <> "Avg: "
+      <> float_to_string_2dp(avg_latency_ms)
+      <> "ms (measured via BEAM monotonic clock)",
+    ),
   )
 }
 

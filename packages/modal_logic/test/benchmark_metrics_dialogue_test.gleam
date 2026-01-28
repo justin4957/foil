@@ -214,7 +214,7 @@ fn test_benchmark_performance() {
     "  Status: "
     <> case metric_result.passed {
       True -> "PASS"
-      False -> "FAIL (simulated timing - throughput not measured)"
+      False -> "FAIL"
     },
   )
   case metric_result.details {
@@ -223,18 +223,13 @@ fn test_benchmark_performance() {
   }
   io.println("")
 
-  // Note: Performance metric uses simulated timing. P95 is checked.
-  // Throughput may be 0 in tests because we don't have real timing instrumentation.
-  // The key metric for Issue #165 is that P95 is under 3000ms which it is (0ms).
-  io.println("User: Verify P95 latency is under target (3000ms)")
+  // With real timing instrumentation (issue #170), both P95 latency and
+  // throughput are measured via BEAM monotonic clock. The benchmark_performance
+  // metric should now pass at 100% since real throughput is computed.
+  io.println("User: Verify P95 latency and throughput meet targets")
+  metric_result.passed |> should.be_true()
   io.println(
-    "[System]: P95 latency is 0ms (simulated) which is under 3000ms target",
-  )
-  io.println("         Note: Throughput not measured in test environment")
-  // Accept the test as passing if P95 is under target, even if throughput is 0
-  { metric_result.actual >=. 50.0 } |> should.be_true()
-  io.println(
-    "[System]: Confirmed - P95 latency passes, benchmark infrastructure functional",
+    "[System]: Confirmed - P95 latency under 3000ms and throughput >= 1 case/sec",
   )
 }
 
@@ -297,15 +292,17 @@ fn test_phase_d_validation() {
     <> " metrics passing",
   )
 
-  // For issue #165, we need at least the main 4 metrics passing
-  // (folio_f1_score, logiqa_accuracy, inpho_coverage, benchmark_performance)
+  // With real timing instrumentation (issue #170), all 5 Phase D metrics
+  // should now pass including benchmark_performance (previously at 50%).
   io.println("")
-  io.println("User: Verify at least 4 metrics are passing (core requirements)")
-  { passing_count >= 4 } |> should.be_true()
+  io.println("User: Verify all 5 Phase D metrics are passing")
+  { passing_count >= 5 } |> should.be_true()
   io.println(
     "[System]: Confirmed - "
     <> int.to_string(passing_count)
-    <> " metrics passing, meeting Phase D requirements",
+    <> "/"
+    <> int.to_string(total_count)
+    <> " metrics passing, Phase D fully complete",
   )
 }
 
