@@ -15,9 +15,10 @@ import modal_logic/argument.{
   type ValidationResult, Formalization, Invalid, Valid,
 }
 import modal_logic/heuristics
+import modal_logic/multi_system
 import modal_logic/proposition.{
-  type Proposition, And, Atom, Believes, Implies, Knows, Necessary, Not,
-  Obligatory, Or, Permitted, Possible,
+  type LogicSystem, type Proposition, And, Atom, Believes, Implies, K, K4, KD,
+  KD45, Knows, Necessary, Not, Obligatory, Or, Permitted, Possible, S4, S5, T,
 }
 import modal_logic/testing/fixtures/fixtures.{type TestFixture}
 import modal_logic/testing/golden/golden_master.{
@@ -150,6 +151,10 @@ pub type AccuracyTestResult {
     fixture_id: String,
     translation_match: TranslationMatch,
     logic_system_correct: Bool,
+    /// The detected logic system from formula structure analysis
+    detected_logic_system: LogicSystem,
+    /// The expected logic system from the test fixture
+    expected_logic_system: LogicSystem,
     validation_correct: Bool,
     /// The classification for confusion matrix computation
     validation_classification: ValidationClassification,
@@ -213,8 +218,10 @@ fn test_fixture_accuracy(
           fixture.expected_conclusion,
         )
 
-      // Check logic system (mock doesn't return this, so assume correct for now)
-      let logic_correct = True
+      // Detect logic system from formula structure and compare against expected
+      let detected_system =
+        detect_logic_system(response.premises, response.conclusion)
+      let logic_correct = detected_system == fixture.expected_logic_system
 
       // Run actual heuristic validation on the translated formalization
       let formalization =
@@ -269,6 +276,8 @@ fn test_fixture_accuracy(
       #(
         translation_match,
         logic_correct,
+        detected_system,
+        fixture.expected_logic_system,
         validation_correct,
         classification,
         predicted_validity,
@@ -279,7 +288,18 @@ fn test_fixture_accuracy(
     }
     Error(_) -> {
       // Translation failed — no validation possible
-      #(NoTranslation, False, False, Indeterminate, None, None, NoBaseline, 0.0)
+      #(
+        NoTranslation,
+        False,
+        K,
+        fixture.expected_logic_system,
+        False,
+        Indeterminate,
+        None,
+        None,
+        NoBaseline,
+        0.0,
+      )
     }
   }
 
@@ -289,6 +309,8 @@ fn test_fixture_accuracy(
   let #(
     translation_match,
     logic_correct,
+    detected_system,
+    expected_system,
     validation_correct,
     classification,
     predicted_validity,
@@ -301,6 +323,8 @@ fn test_fixture_accuracy(
     fixture_id: fixture.id,
     translation_match: translation_match,
     logic_system_correct: logic_correct,
+    detected_logic_system: detected_system,
+    expected_logic_system: expected_system,
     validation_correct: validation_correct,
     validation_classification: classification,
     predicted_validity: predicted_validity,
@@ -454,8 +478,13 @@ fn compute_aggregate_metrics(
 
   // Logic detection metrics
   let logic_correct = list.count(results, fn(r) { r.logic_system_correct })
+  let by_system = compute_by_system_breakdown(results)
   let logic_detection =
-    LogicDetectionMetrics(total: total, correct: logic_correct, by_system: [])
+    LogicDetectionMetrics(
+      total: total,
+      correct: logic_correct,
+      by_system: by_system,
+    )
 
   // Validation metrics — proper confusion matrix from classification
   let true_positives =
@@ -711,4 +740,265 @@ pub fn run_verbose(fixtures: List(TestFixture)) -> AccuracyResults {
   let results = run_accuracy_tests(fixtures)
   // Print individual results would go here
   results
+}
+
+// =============================================================================
+// Logic System Detection
+// =============================================================================
+
+/// Detect the most appropriate logic system from formula structure.
+///
+/// Analyzes the modal operators present in the premises and conclusion,
+/// as well as axiom patterns that require specific frame properties, to
+/// determine which logic system the formula belongs to.
+///
+/// Detection priority:
+/// 1. Epistemic operators (Knows) → S5
+/// 2. Doxastic operators (Believes) → KD45
+/// 3. Deontic operators (Obligatory, Permitted) → KD
+/// 4. Axiom patterns requiring specific frame properties
+/// 5. Pure alethic modal operators → K (base case)
+pub fn detect_logic_system(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> LogicSystem {
+  let all_propositions = list.append(premises, [conclusion])
+
+  // Check for epistemic operators (Knows) → S5
+  let has_knowledge =
+    list.any(all_propositions, fn(prop) {
+      proposition_contains_operator(prop, IsKnows)
+    })
+  case has_knowledge {
+    True -> S5
+    False -> {
+      // Check for doxastic operators (Believes) → KD45
+      let has_belief =
+        list.any(all_propositions, fn(prop) {
+          proposition_contains_operator(prop, IsBelieves)
+        })
+      case has_belief {
+        True -> KD45
+        False -> {
+          // Check for deontic operators (Obligatory, Permitted) → KD
+          let has_deontic =
+            list.any(all_propositions, fn(prop) {
+              proposition_contains_operator(prop, IsDeontic)
+            })
+          case has_deontic {
+            True -> KD
+            False -> {
+              // Analyze frame property requirements from axiom patterns
+              detect_from_frame_requirements(premises, conclusion)
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/// Operator category for detection
+type OperatorCategory {
+  IsKnows
+  IsBelieves
+  IsDeontic
+}
+
+/// Check if a proposition contains a specific operator category (recursively)
+fn proposition_contains_operator(
+  prop: Proposition,
+  category: OperatorCategory,
+) -> Bool {
+  case prop, category {
+    Knows(_, _), IsKnows -> True
+    Believes(_, _), IsBelieves -> True
+    Obligatory(_), IsDeontic -> True
+    Permitted(_), IsDeontic -> True
+    _, _ -> {
+      // Recurse into sub-propositions
+      case prop {
+        Atom(_) -> False
+        Not(inner) -> proposition_contains_operator(inner, category)
+        And(left, right) ->
+          proposition_contains_operator(left, category)
+          || proposition_contains_operator(right, category)
+        Or(left, right) ->
+          proposition_contains_operator(left, category)
+          || proposition_contains_operator(right, category)
+        Implies(left, right) ->
+          proposition_contains_operator(left, category)
+          || proposition_contains_operator(right, category)
+        Necessary(inner) -> proposition_contains_operator(inner, category)
+        Possible(inner) -> proposition_contains_operator(inner, category)
+        Obligatory(inner) -> proposition_contains_operator(inner, category)
+        Permitted(inner) -> proposition_contains_operator(inner, category)
+        Knows(_, inner) -> proposition_contains_operator(inner, category)
+        Believes(_, inner) -> proposition_contains_operator(inner, category)
+        _ -> False
+      }
+    }
+  }
+}
+
+/// Detect logic system from frame property requirements of the formula.
+///
+/// Uses the multi_system module's frame property analysis to determine
+/// which axiom patterns are present and what frame properties they require.
+fn detect_from_frame_requirements(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> LogicSystem {
+  let all_propositions = list.append(premises, [conclusion])
+
+  // Check for patterns requiring specific frame properties
+  let needs_reflexivity =
+    list.any(all_propositions, fn(prop) { is_reflexivity_pattern(prop) })
+    || is_t_axiom_argument(premises, conclusion)
+
+  let needs_transitivity =
+    list.any(all_propositions, fn(prop) { is_transitivity_pattern(prop) })
+    || is_four_axiom_argument(premises, conclusion)
+
+  let needs_euclidean =
+    list.any(all_propositions, fn(prop) { is_euclidean_pattern(prop) })
+    || is_five_axiom_argument(premises, conclusion)
+
+  let needs_seriality =
+    list.any(all_propositions, fn(prop) { is_seriality_pattern(prop) })
+    || is_d_axiom_argument(premises, conclusion)
+
+  // Map frame properties to the minimal logic system
+  case needs_reflexivity, needs_transitivity, needs_euclidean, needs_seriality {
+    // S5: any combination involving euclidean (5-axiom is characteristic of S5)
+    _, _, True, False -> S5
+    // S4: reflexivity + transitivity
+    True, True, False, False -> S4
+    // KD45: seriality + transitivity + euclidean
+    False, True, True, True -> KD45
+    _, _, True, True -> KD45
+    // K4: transitivity only
+    False, True, False, False -> K4
+    // T: reflexivity only
+    True, False, False, False -> T
+    // KD: seriality only
+    False, False, False, True -> KD
+    // K: no special frame properties needed
+    _, _, _, _ -> K
+  }
+}
+
+/// Check if a proposition matches the T-axiom pattern: □p → p
+fn is_reflexivity_pattern(prop: Proposition) -> Bool {
+  case prop {
+    Implies(Necessary(inner), actual) -> propositions_equal(inner, actual)
+    _ -> False
+  }
+}
+
+/// Check if the argument as a whole is a T-axiom: □p ⊢ p
+fn is_t_axiom_argument(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Bool {
+  case premises {
+    [Necessary(inner)] -> propositions_equal(inner, conclusion)
+    _ -> False
+  }
+}
+
+/// Check if a proposition matches the 4-axiom pattern: □p → □□p
+fn is_transitivity_pattern(prop: Proposition) -> Bool {
+  case prop {
+    Implies(Necessary(inner), Necessary(Necessary(outer))) ->
+      propositions_equal(inner, outer)
+    _ -> False
+  }
+}
+
+/// Check if the argument as a whole is a 4-axiom: □p ⊢ □□p
+fn is_four_axiom_argument(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Bool {
+  case premises, conclusion {
+    [Necessary(inner)], Necessary(Necessary(outer)) ->
+      propositions_equal(inner, outer)
+    _, _ -> False
+  }
+}
+
+/// Check if a proposition matches the 5-axiom pattern: ◇p → □◇p
+fn is_euclidean_pattern(prop: Proposition) -> Bool {
+  case prop {
+    Implies(Possible(inner), Necessary(Possible(outer))) ->
+      propositions_equal(inner, outer)
+    _ -> False
+  }
+}
+
+/// Check if the argument as a whole is a 5-axiom: ◇p ⊢ □◇p
+fn is_five_axiom_argument(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Bool {
+  case premises, conclusion {
+    [Possible(inner)], Necessary(Possible(outer)) ->
+      propositions_equal(inner, outer)
+    _, _ -> False
+  }
+}
+
+/// Check if a proposition matches the D-axiom pattern: □p → ◇p
+fn is_seriality_pattern(prop: Proposition) -> Bool {
+  case prop {
+    Implies(Necessary(inner), Possible(outer)) ->
+      propositions_equal(inner, outer)
+    _ -> False
+  }
+}
+
+/// Check if the argument as a whole is a D-axiom: □p ⊢ ◇p
+fn is_d_axiom_argument(
+  premises: List(Proposition),
+  conclusion: Proposition,
+) -> Bool {
+  case premises, conclusion {
+    [Necessary(inner)], Possible(outer) -> propositions_equal(inner, outer)
+    // Also match Obligatory ⊢ Permitted pattern
+    [Obligatory(inner)], Permitted(outer) -> propositions_equal(inner, outer)
+    _, _ -> False
+  }
+}
+
+// =============================================================================
+// Per-System Breakdown
+// =============================================================================
+
+/// Compute per-system accuracy breakdown from test results.
+///
+/// Groups results by expected logic system and computes correct/total
+/// counts for each system, returning a list of (system_name, correct, total).
+fn compute_by_system_breakdown(
+  results: List(AccuracyTestResult),
+) -> List(#(String, Int, Int)) {
+  let system_names = ["K", "T", "K4", "S4", "S5", "KD", "KD45"]
+
+  system_names
+  |> list.filter_map(fn(system_name) {
+    let system_results =
+      list.filter(results, fn(r) {
+        multi_system.logic_system_to_string(r.expected_logic_system)
+        == system_name
+      })
+
+    case list.length(system_results) {
+      0 -> Error(Nil)
+      system_total -> {
+        let system_correct =
+          list.count(system_results, fn(r) { r.logic_system_correct })
+        Ok(#(system_name, system_correct, system_total))
+      }
+    }
+  })
 }
