@@ -44,6 +44,8 @@ import modal_logic/proposition.{
   Possible, ProbAtLeast, ProbAtMost, ProbRange, Probable, S4, S5, T,
 }
 import modal_logic/reason_chain
+import modal_logic/testing/accuracy/accuracy_tests
+import modal_logic/testing/fixtures/ground_truth
 import modal_logic/timing
 import modal_logic/validator.{ValidationResponse}
 import modal_logic/validity_trace
@@ -1290,6 +1292,7 @@ fn validate_phase_d(config: EpicValidationConfig) -> PhaseValidationResult {
     validate_inpho_coverage(config.accuracy_samples),
     validate_benchmark_regression_detection(config.accuracy_samples),
     validate_benchmark_performance(config.accuracy_samples),
+    validate_curated_accuracy(),
   ]
 
   let all_passed = list.all(metrics, fn(m) { m.passed })
@@ -1526,6 +1529,70 @@ pub fn validate_benchmark_performance(sample_size: Int) -> MetricResult {
       <> "Throughput: "
       <> float_to_string_2dp(results.performance.throughput)
       <> " cases/sec",
+    ),
+  )
+}
+
+/// Validate accuracy against curated ground-truth fixtures
+///
+/// Runs the accuracy testing pipeline against independently verified
+/// ground-truth test cases rather than synthetic/generated data.
+/// Reports per-system and per-complexity breakdown from curated cases.
+/// Target: 50% F1 score (curated cases are harder than generated ones)
+pub fn validate_curated_accuracy() -> MetricResult {
+  let curated_fixtures = ground_truth.all_ground_truth_fixtures()
+  let fixture_count = list.length(curated_fixtures)
+
+  let curated_results = accuracy_tests.run_accuracy_tests(curated_fixtures)
+
+  let f1_percent = curated_results.validation.f1_score *. 100.0
+
+  let system_summary =
+    curated_results.validation_by_system
+    |> list.map(fn(entry) {
+      let #(system_name, metrics) = entry
+      system_name
+      <> ": F1="
+      <> float_to_string_2dp(metrics.f1_score *. 100.0)
+      <> "%"
+    })
+    |> string.join(", ")
+
+  let complexity_summary =
+    curated_results.validation_by_complexity
+    |> list.map(fn(entry) {
+      let #(bucket_name, metrics) = entry
+      bucket_name
+      <> ": F1="
+      <> float_to_string_2dp(metrics.f1_score *. 100.0)
+      <> "%"
+    })
+    |> string.join(", ")
+
+  MetricResult(
+    name: "curated_ground_truth_accuracy",
+    target: 50.0,
+    actual: f1_percent,
+    passed: f1_percent >=. 50.0,
+    samples: fixture_count,
+    unit: "%",
+    details: Some(
+      "Curated ground-truth F1 score ("
+      <> int.to_string(fixture_count)
+      <> " fixtures). "
+      <> "TP: "
+      <> int.to_string(curated_results.validation.true_positives)
+      <> ", TN: "
+      <> int.to_string(curated_results.validation.true_negatives)
+      <> ", FP: "
+      <> int.to_string(curated_results.validation.false_positives)
+      <> ", FN: "
+      <> int.to_string(curated_results.validation.false_negatives)
+      <> ". Per-system: ["
+      <> system_summary
+      <> "]. Per-complexity: ["
+      <> complexity_summary
+      <> "]",
     ),
   )
 }
