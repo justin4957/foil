@@ -9,7 +9,12 @@
 import gleam/float
 import gleam/int
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/string
+import modal_logic/argument.{
+  type ValidationResult, Formalization, Invalid, Valid,
+}
+import modal_logic/heuristics
 import modal_logic/proposition.{
   type Proposition, And, Atom, Believes, Implies, Knows, Necessary, Not,
   Obligatory, Or, Permitted, Possible,
@@ -124,6 +129,21 @@ pub type OverallMetrics {
   )
 }
 
+/// Classification of a validation result for confusion matrix computation
+pub type ValidationClassification {
+  /// Predicted valid, expected valid (true positive)
+  TruePositive
+  /// Predicted invalid, expected invalid (true negative)
+  TrueNegative
+  /// Predicted valid, expected invalid (false positive)
+  FalsePositive
+  /// Predicted invalid, expected valid (false negative)
+  FalseNegative
+  /// Validation produced no definitive result (Unknown/Timeout/Error)
+  /// or expected validity was Unknown/Either — excluded from confusion matrix
+  Indeterminate
+}
+
 /// Individual test result for accuracy tracking
 pub type AccuracyTestResult {
   AccuracyTestResult(
@@ -131,6 +151,12 @@ pub type AccuracyTestResult {
     translation_match: TranslationMatch,
     logic_system_correct: Bool,
     validation_correct: Bool,
+    /// The classification for confusion matrix computation
+    validation_classification: ValidationClassification,
+    /// The predicted validity from actual heuristic validation
+    predicted_validity: Option(Bool),
+    /// The expected validity from the test fixture
+    expected_validity_bool: Option(Bool),
     golden_comparison: GoldenComparison,
     confidence: Float,
     duration_ms: Int,
@@ -190,9 +216,46 @@ fn test_fixture_accuracy(
       // Check logic system (mock doesn't return this, so assume correct for now)
       let logic_correct = True
 
-      // Check validation correctness
-      let validation_correct =
-        check_validation_correctness(response, fixture.expected_validity)
+      // Run actual heuristic validation on the translated formalization
+      let formalization =
+        Formalization(
+          id: fixture.id <> "_accuracy",
+          argument_id: fixture.id,
+          logic_system: fixture.expected_logic_system,
+          premises: response.premises,
+          conclusion: response.conclusion,
+          assumptions: [],
+          validation: None,
+          created_at: None,
+          updated_at: None,
+        )
+
+      let heuristic_result = heuristics.try_heuristic_validation(formalization)
+
+      // Extract predicted validity from heuristic result
+      let predicted_validity = case heuristic_result {
+        Some(hr) ->
+          case hr.result {
+            Valid -> Some(True)
+            Invalid(_) -> Some(False)
+            _ -> None
+          }
+        None -> None
+      }
+
+      // Extract expected validity as a boolean
+      let expected_validity_bool =
+        expected_validity_to_bool(fixture.expected_validity)
+
+      // Classify the validation result against expected validity
+      let classification =
+        classify_validation(predicted_validity, expected_validity_bool)
+
+      // Validation is correct if classification is TP or TN
+      let validation_correct = case classification {
+        TruePositive | TrueNegative -> True
+        _ -> False
+      }
 
       // Compare against golden master
       let golden_comparison =
@@ -207,13 +270,16 @@ fn test_fixture_accuracy(
         translation_match,
         logic_correct,
         validation_correct,
+        classification,
+        predicted_validity,
+        expected_validity_bool,
         golden_comparison,
         response.confidence,
       )
     }
     Error(_) -> {
-      // Translation failed
-      #(NoTranslation, False, False, NoBaseline, 0.0)
+      // Translation failed — no validation possible
+      #(NoTranslation, False, False, Indeterminate, None, None, NoBaseline, 0.0)
     }
   }
 
@@ -224,6 +290,9 @@ fn test_fixture_accuracy(
     translation_match,
     logic_correct,
     validation_correct,
+    classification,
+    predicted_validity,
+    expected_validity_bool,
     golden_comparison,
     confidence,
   ) = accuracy_result
@@ -233,6 +302,9 @@ fn test_fixture_accuracy(
     translation_match: translation_match,
     logic_system_correct: logic_correct,
     validation_correct: validation_correct,
+    validation_classification: classification,
+    predicted_validity: predicted_validity,
+    expected_validity_bool: expected_validity_bool,
     golden_comparison: golden_comparison,
     confidence: confidence,
     duration_ms: elapsed_ms,
@@ -278,20 +350,34 @@ fn compare_translation(
   }
 }
 
-/// Check if validation result matches expected validity
-fn check_validation_correctness(
-  response: MockResponse,
-  expected: ExpectedValidity,
-) -> Bool {
-  // For now, we assume mock responses have implicit validity based on confidence
-  // High confidence (> 0.8) suggests valid translation, low suggests issues
+/// Convert ExpectedValidity to an optional boolean for confusion matrix
+///
+/// Returns Some(True) for ExpectedValid, Some(False) for ExpectedInvalid,
+/// and None for ExpectedEither/Unknown (excluded from confusion matrix).
+fn expected_validity_to_bool(expected: ExpectedValidity) -> Option(Bool) {
   case expected {
-    ExpectedValid -> response.confidence >. 0.7
-    ExpectedInvalid(_) -> response.confidence <. 0.85
-    ExpectedEither(_) -> True
-    // Either interpretation is fine
-    Unknown -> True
-    // Unknown means we accept any result
+    ExpectedValid -> Some(True)
+    ExpectedInvalid(_) -> Some(False)
+    ExpectedEither(_) -> None
+    Unknown -> None
+  }
+}
+
+/// Classify a validation result into the confusion matrix
+///
+/// Compares predicted validity (from actual heuristic validation) against
+/// expected validity (from test fixture). Both must be definitive (Some)
+/// for a classification; otherwise the result is Indeterminate.
+fn classify_validation(
+  predicted: Option(Bool),
+  expected: Option(Bool),
+) -> ValidationClassification {
+  case predicted, expected {
+    Some(True), Some(True) -> TruePositive
+    Some(False), Some(False) -> TrueNegative
+    Some(True), Some(False) -> FalsePositive
+    Some(False), Some(True) -> FalseNegative
+    _, _ -> Indeterminate
   }
 }
 
@@ -371,24 +457,40 @@ fn compute_aggregate_metrics(
   let logic_detection =
     LogicDetectionMetrics(total: total, correct: logic_correct, by_system: [])
 
-  // Validation metrics
-  let validation_correct = list.count(results, fn(r) { r.validation_correct })
+  // Validation metrics — proper confusion matrix from classification
+  let true_positives =
+    list.count(results, fn(r) { r.validation_classification == TruePositive })
+  let true_negatives =
+    list.count(results, fn(r) { r.validation_classification == TrueNegative })
+  let false_positives =
+    list.count(results, fn(r) { r.validation_classification == FalsePositive })
+  let false_negatives =
+    list.count(results, fn(r) { r.validation_classification == FalseNegative })
+
+  let precision =
+    safe_divide(
+      int.to_float(true_positives),
+      int.to_float(true_positives + false_positives),
+    )
+  let recall =
+    safe_divide(
+      int.to_float(true_positives),
+      int.to_float(true_positives + false_negatives),
+    )
+  let f1_score = safe_divide(2.0 *. precision *. recall, precision +. recall)
+
+  let validation_correct = true_positives + true_negatives
+
   let validation =
     ValidationMetrics(
       total: total,
-      true_positives: validation_correct,
-      true_negatives: 0,
-      false_positives: 0,
-      false_negatives: total - validation_correct,
-      precision: safe_divide(
-        int.to_float(validation_correct),
-        int.to_float(total),
-      ),
-      recall: 1.0,
-      f1_score: safe_divide(
-        int.to_float(2 * validation_correct),
-        int.to_float(total + validation_correct),
-      ),
+      true_positives: true_positives,
+      true_negatives: true_negatives,
+      false_positives: false_positives,
+      false_negatives: false_negatives,
+      precision: precision,
+      recall: recall,
+      f1_score: f1_score,
     )
 
   // End-to-end metrics
@@ -535,6 +637,19 @@ pub fn format_report(results: AccuracyResults) -> String {
     ")\n",
     "\n",
     "## Validation Accuracy\n",
+    "  Confusion Matrix:\n",
+    "    TP (valid predicted valid):     ",
+    int.to_string(results.validation.true_positives),
+    "\n",
+    "    TN (invalid predicted invalid): ",
+    int.to_string(results.validation.true_negatives),
+    "\n",
+    "    FP (invalid predicted valid):   ",
+    int.to_string(results.validation.false_positives),
+    "\n",
+    "    FN (valid predicted invalid):   ",
+    int.to_string(results.validation.false_negatives),
+    "\n",
     "  Precision: ",
     float_to_string(results.validation.precision *. 100.0),
     "%\n",

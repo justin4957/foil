@@ -182,6 +182,30 @@ Test fixtures and sample arguments are located in:
 - `packages/*/test/fixtures/`
 - `apps/analyst/test/fixtures/`
 
+## Validation Accuracy and Confusion Matrix
+
+The `accuracy_tests` module computes validation accuracy using a proper confusion
+matrix from actual heuristic validation results:
+
+- **True Positive (TP)**: Argument is valid, heuristic classifies as Valid
+- **True Negative (TN)**: Argument is invalid, heuristic classifies as Invalid
+- **False Positive (FP)**: Argument is invalid, heuristic classifies as Valid
+- **False Negative (FN)**: Argument is valid, heuristic classifies as Invalid
+- **Indeterminate**: Heuristic returns Unknown/Timeout/Error, or expected validity is Unknown/Either
+
+Metrics derived from confusion matrix:
+- **Precision** = TP / (TP + FP) — of arguments classified as valid, how many truly are
+- **Recall** = TP / (TP + FN) — of truly valid arguments, how many were classified as valid
+- **F1 Score** = 2 * Precision * Recall / (Precision + Recall) — harmonic mean
+
+Each `AccuracyTestResult` includes a `ValidationClassification` field tracking
+the predicted vs expected validity. The classification runs actual heuristic
+validation (`heuristics.try_heuristic_validation`) on the translated formalization
+rather than using confidence thresholds as a proxy.
+
+**Dialogue test:** `test/validation_correctness_dialogue_test.gleam` verifies
+confusion matrix computation with known valid and invalid arguments.
+
 ## Timing and Performance Measurement
 
 The `modal_logic/timing` module provides real BEAM monotonic time instrumentation
