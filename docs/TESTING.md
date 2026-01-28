@@ -445,6 +445,80 @@ harder than generated ones).
 count (>= 50), category coverage, source documentation, accuracy pipeline
 integration, per-system/per-complexity breakdowns, and Phase D metric wiring.
 
+## Baseline Regression Testing (Issue #177)
+
+Golden master baseline persistence allows accuracy metrics to be compared across
+runs, detecting regressions automatically.
+
+### Overview
+
+The `baseline_persistence` module (`src/modal_logic/testing/golden/baseline_persistence.gleam`)
+provides file-based baseline storage, regression detection, and metric trend tracking.
+
+### JSON Baseline Format
+
+Baselines are stored as JSON files with this schema:
+
+```json
+{
+  "schema_version": 1,
+  "current_baseline": {
+    "schema_version": 1,
+    "timestamp": "epoch_ms:1706400000000",
+    "git_commit": "abc123",
+    "f1_score": 0.87,
+    "accuracy": 0.85,
+    "precision": 0.88,
+    "recall": 0.92,
+    "translation_accuracy": 0.75,
+    "logic_detection_accuracy": 0.8,
+    "per_system_f1": [{"name": "K", "value": 0.9}],
+    "per_complexity_f1": [{"name": "simple", "value": 0.92}],
+    "total_cases": 50
+  },
+  "run_history": [],
+  "max_history": 10
+}
+```
+
+### Regression Detection
+
+Metrics are compared against the baseline with a configurable threshold (default 2%).
+Severity levels:
+
+| Severity   | Threshold       | Description                         |
+|------------|-----------------|-------------------------------------|
+| None       | delta >= 0      | No regression detected              |
+| Minor      | -2% to -5%      | Small regression, below threshold   |
+| Major      | -5% to -10%     | Significant regression              |
+| Critical   | < -10%          | Severe regression, immediate action |
+
+### Trend Tracking
+
+The last 10 runs are stored in `run_history` for trend analysis. Trends are
+classified as `Improving`, `Declining`, or `Stable` based on average metric
+change per run.
+
+### Resetting Baselines
+
+After intentional accuracy changes (e.g., new heuristics), reset the baseline:
+
+1. Delete or rename the baseline file at `results/baseline.json`
+2. Run the test suite — a new baseline is created automatically on first run
+3. Commit the new baseline file
+
+### CI Integration
+
+The Phase D `golden_baseline_regression` metric validates baseline infrastructure.
+When `EpicValidationConfig.baseline_path` is `Some("results/baseline.json")`,
+file-based regression checks run automatically. When `None` (default), in-memory
+infrastructure validation runs instead.
+
+**Dialogue test:** `test/baseline_regression_dialogue_test.gleam` verifies snapshot
+creation, regression detection (true positive and no false positive), minor
+regression handling, per-system regression, trend computation, JSON roundtrip, and
+Phase D metric integration.
+
 ## Coverage Goals
 
 - Aim for >80% code coverage
