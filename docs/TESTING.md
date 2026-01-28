@@ -236,6 +236,39 @@ let #(result, elapsed_us) = timing.measure_microseconds(fn() {
 // elapsed_us is real microseconds from BEAM monotonic clock
 ```
 
+## Logic System Detection
+
+The `accuracy_tests` module detects the logic system from formula structure
+and compares against the expected system in each `TestFixture`. Detection
+analyzes modal operators and axiom patterns:
+
+**Detection priority:**
+1. Epistemic operators (`Knows`) → S5
+2. Doxastic operators (`Believes`) → KD45
+3. Deontic operators (`Obligatory`, `Permitted`) → KD
+4. Axiom patterns requiring specific frame properties:
+   - T-axiom (`□p → p` or `□p ⊢ p`) → requires reflexivity → T
+   - 4-axiom (`□p → □□p` or `□p ⊢ □□p`) → requires transitivity → K4
+   - 5-axiom (`◇p → □◇p` or `◇p ⊢ □◇p`) → requires euclidean → S5
+   - D-axiom (`□p → ◇p`) → requires seriality → KD
+   - Combined reflexivity + transitivity → S4
+5. Pure alethic modal operators with no special patterns → K
+
+**Per-system breakdown:** `LogicDetectionMetrics.by_system` contains tuples of
+`(system_name, correct_count, total_count)` for each system that has fixtures,
+enabling identification of which modal systems have weaker detection accuracy.
+
+**Dialogue test:** `test/logic_system_detection_dialogue_test.gleam` verifies
+detection for each supported system (K, T, S4, S5, K4, KD, KD45) and confirms
+the per-system breakdown is populated with real data.
+
+```gleam
+// Example: detect logic system from formula structure
+let detected = accuracy_tests.detect_logic_system(premises, conclusion)
+// Returns the LogicSystem (K, T, S4, S5, K4, KD, KD45) based on
+// operator analysis and axiom pattern matching
+```
+
 ## Coverage Goals
 
 - Aim for >80% code coverage
