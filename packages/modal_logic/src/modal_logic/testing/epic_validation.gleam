@@ -45,6 +45,7 @@ import modal_logic/proposition.{
 }
 import modal_logic/reason_chain
 import modal_logic/testing/accuracy/accuracy_tests
+import modal_logic/testing/fixtures/fixtures
 import modal_logic/testing/fixtures/ground_truth
 import modal_logic/timing
 import modal_logic/validator.{ValidationResponse}
@@ -251,6 +252,7 @@ fn validate_phase_a(config: EpicValidationConfig) -> PhaseValidationResult {
     validate_tier_selection_accuracy(config.accuracy_samples),
     validate_confidence_score_accuracy(config.accuracy_samples),
     validate_confidence_factor_coverage(config.accuracy_samples),
+    validate_tier1_false_positive_rate(),
   ]
 
   let all_passed = list.all(metrics, fn(m) { m.passed })
@@ -497,6 +499,68 @@ pub fn validate_confidence_factor_coverage(sample_size: Int) -> MetricResult {
     details: Some(
       "Percentage of results with 2+ confidence factors. "
       <> "Factors explain how confidence was computed.",
+    ),
+  )
+}
+
+/// Validate Tier 1 false positive rate via cross-validation
+///
+/// Runs all curated ground-truth fixtures and built-in fixtures through Tier 1
+/// heuristic validation only (Tier 2 disabled), then compares results against
+/// expected validity from the fixture corpus. Reports the false positive rate
+/// (Tier 1 says Valid but fixture says Invalid).
+/// Target: false positive rate < 5%
+pub fn validate_tier1_false_positive_rate() -> MetricResult {
+  // Combine curated and standard fixtures for cross-validation
+  let all_cross_validation_fixtures =
+    list.flatten([
+      ground_truth.all_ground_truth_fixtures(),
+      fixtures.all_fixtures(),
+    ])
+
+  let cross_validation_result =
+    accuracy_tests.cross_validate_tier1(all_cross_validation_fixtures)
+
+  // Report as false positive percentage
+  let fp_rate_percent = cross_validation_result.false_positive_rate *. 100.0
+
+  // Invert for scoring: 100% means 0% false positives
+  let score = 100.0 -. fp_rate_percent
+  let target = 95.0
+
+  let pattern_summary =
+    cross_validation_result.per_pattern_errors
+    |> list.filter(fn(pattern) { pattern.error_count > 0 })
+    |> list.map(fn(pattern) {
+      pattern.pattern_name
+      <> ": "
+      <> int.to_string(pattern.error_count)
+      <> "/"
+      <> int.to_string(pattern.total_cases)
+    })
+    |> string.join(", ")
+
+  MetricResult(
+    name: "tier1_false_positive_rate",
+    target: target,
+    actual: score,
+    passed: score >=. target,
+    samples: cross_validation_result.total_cross_validated,
+    unit: "%",
+    details: Some(
+      "Tier 1 cross-validation correctness (100% - FP rate). "
+      <> "Validated: "
+      <> int.to_string(cross_validation_result.total_cross_validated)
+      <> ", Agreements: "
+      <> int.to_string(cross_validation_result.agreements)
+      <> ", FP: "
+      <> int.to_string(cross_validation_result.false_positive_count)
+      <> ", FN: "
+      <> int.to_string(cross_validation_result.false_negative_count)
+      <> case string.length(pattern_summary) > 0 {
+        True -> ". Errors by pattern: [" <> pattern_summary <> "]"
+        False -> ". No pattern errors detected"
+      },
     ),
   )
 }

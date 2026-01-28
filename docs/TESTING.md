@@ -290,6 +290,39 @@ system-specific boundary behavior:
 per-system confusion matrices, complexity bucketing, lowest F1 identification,
 and system boundary fixture coverage.
 
+## Tier 1 Cross-Validation (False Positive Detection)
+
+`accuracy_tests.cross_validate_tier1(fixtures)` runs Tier 1 heuristic validation
+(with Tier 2 disabled) on each fixture and compares the result against the
+fixture's expected validity. This detects false positives (heuristic says Valid
+but the argument is Invalid) and false negatives (heuristic says Invalid but the
+argument is Valid).
+
+**Key metrics in `Tier1CrossValidation`:**
+- `false_positive_rate` — fraction of cross-validated cases where Tier 1 incorrectly says Valid
+- `false_negative_rate` — fraction where Tier 1 incorrectly says Invalid
+- `agreement_rate` — overall agreement with ground truth
+- `per_pattern_errors` — error rate broken down by heuristic pattern (identity, modus_ponens, k_distribution, etc.)
+- `disagreement_cases` — specific cases where Tier 1 disagrees with ground truth
+
+**Phase A metric:** `validate_tier1_false_positive_rate()` combines curated and
+standard fixtures, runs cross-validation, and reports `100% - FP_rate` as the
+score. Target: 95% (equivalent to <5% false positive rate).
+
+```gleam
+// Example: cross-validate Tier 1 on curated fixtures
+let fixtures = ground_truth.all_ground_truth_fixtures()
+let result = accuracy_tests.cross_validate_tier1(fixtures)
+// result.false_positive_rate — lower is better
+// result.per_pattern_errors — which patterns have errors
+// result.disagreement_cases — specific failing cases
+```
+
+**Dialogue test:** `test/tier1_false_positive_dialogue_test.gleam` verifies
+cross-validation execution, rate bounds, per-pattern errors, disagreement
+structure, agreement rate, pattern name extraction, curated fixture
+cross-validation, and Phase A metric integration.
+
 ## Timing and Performance Measurement
 
 The `modal_logic/timing` module provides real BEAM monotonic time instrumentation
