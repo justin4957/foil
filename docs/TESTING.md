@@ -206,6 +206,45 @@ rather than using confidence thresholds as a proxy.
 **Dialogue test:** `test/validation_correctness_dialogue_test.gleam` verifies
 confusion matrix computation with known valid and invalid arguments.
 
+### Confidence Calibration
+
+`TranslationMetrics.confidence_calibration` contains a `ConfidenceCalibration`
+record with proper statistical metrics replacing the previous simple
+mean-difference proxy:
+
+- **Brier Score** = 1/N * Σ(confidence_i - correct_i)² — mean squared error
+  between predicted confidence and actual correctness (lower is better, 0.0 =
+  perfect calibration)
+- **Expected Calibration Error (ECE)** — weighted average of |mean_confidence -
+  observed_accuracy| across 5 confidence buckets ([0.0-0.2), [0.2-0.4),
+  [0.4-0.6), [0.6-0.8), [0.8-1.0])
+- **Overconfidence Rate** — fraction of high-confidence (>0.8) results that are
+  incorrect (correctness < 0.5)
+- **Underconfidence Rate** — fraction of low-confidence (<0.5) results that are
+  correct (correctness >= 0.5)
+- **Calibration Curve** — per-bucket predicted confidence vs observed accuracy
+  data for plotting calibration diagrams
+
+Translation match levels are scored continuously rather than binary:
+- ExactTranslation → 1.0
+- PartialTranslation(matched, total) → matched / total
+- ConclusionOnly → 0.25
+- NoTranslation → 0.0
+
+```gleam
+// Example: access calibration metrics
+let results = accuracy_tests.run_accuracy_tests(fixtures)
+let cal = results.translation.confidence_calibration
+// cal.brier_score — lower is better
+// cal.expected_calibration_error — lower is better
+// cal.overconfidence_rate — fraction of overconfident results
+// cal.calibration_curve — list of CalibrationBucket records
+```
+
+**Dialogue test:** `test/confidence_calibration_dialogue_test.gleam` verifies
+Brier score computation, ECE, over/underconfidence rates, calibration curve
+buckets, translation match scoring, and empty-input safety.
+
 ### Per-System Validation Breakdown
 
 `AccuracyResults.validation_by_system` contains a `List(#(String, ValidationMetrics))`
