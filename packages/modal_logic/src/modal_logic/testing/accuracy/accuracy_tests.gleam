@@ -65,8 +65,51 @@ pub type TranslationMetrics {
     no_matches: Int,
     /// Average proposition match rate
     avg_proposition_match: Float,
-    /// Confidence correlation (r-squared)
-    confidence_correlation: Float,
+    /// Confidence calibration metrics (replaces simple correlation)
+    confidence_calibration: ConfidenceCalibration,
+  )
+}
+
+/// Confidence calibration metrics measuring how well confidence
+/// scores predict actual correctness.
+///
+/// - Brier score: mean squared error between confidence and binary outcome
+///   (lower is better, 0.0 = perfect calibration)
+/// - ECE: expected calibration error across confidence buckets
+///   (lower is better, 0.0 = perfectly calibrated)
+/// - Overconfidence rate: fraction of high-confidence (>0.8) results that
+///   are incorrect
+/// - Underconfidence rate: fraction of low-confidence (<0.5) results that
+///   are actually correct
+/// - Calibration curve: per-bucket predicted confidence vs observed accuracy
+pub type ConfidenceCalibration {
+  ConfidenceCalibration(
+    /// Brier score: 1/N * Σ(confidence_i - correct_i)²
+    brier_score: Float,
+    /// Expected Calibration Error across confidence buckets
+    expected_calibration_error: Float,
+    /// Fraction of high-confidence (>0.8) results that are incorrect
+    overconfidence_rate: Float,
+    /// Fraction of low-confidence (<0.5) results that are correct
+    underconfidence_rate: Float,
+    /// Calibration curve: list of (bucket_label, mean_confidence, observed_accuracy, count)
+    calibration_curve: List(CalibrationBucket),
+    /// Total samples used for calibration
+    total_samples: Int,
+  )
+}
+
+/// A single bucket in the confidence calibration curve
+pub type CalibrationBucket {
+  CalibrationBucket(
+    /// Human-readable label (e.g., "0.0-0.2", "0.8-1.0")
+    label: String,
+    /// Mean predicted confidence in this bucket
+    mean_confidence: Float,
+    /// Observed accuracy (fraction correct) in this bucket
+    observed_accuracy: Float,
+    /// Number of samples in this bucket
+    count: Int,
   )
 }
 
@@ -503,7 +546,7 @@ fn compute_aggregate_metrics(
       partial_matches: partial_matches,
       no_matches: no_matches,
       avg_proposition_match: avg_match,
-      confidence_correlation: compute_confidence_correlation(results),
+      confidence_calibration: compute_confidence_calibration(results),
     )
 
   // Logic detection metrics
@@ -616,39 +659,222 @@ fn compute_aggregate_metrics(
   )
 }
 
-/// Compute correlation between confidence and correctness
-fn compute_confidence_correlation(results: List(AccuracyTestResult)) -> Float {
-  // Simplified correlation: mean confidence of correct vs incorrect
-  let correct =
-    list.filter(results, fn(r) {
-      case r.translation_match {
-        ExactTranslation -> True
-        _ -> False
-      }
-    })
+// =============================================================================
+// Confidence Calibration
+// =============================================================================
 
-  let incorrect =
-    list.filter(results, fn(r) {
-      case r.translation_match {
-        NoTranslation -> True
-        _ -> False
-      }
-    })
+/// Compute confidence calibration metrics from accuracy test results.
+///
+/// Assigns a correctness score to each result based on translation match level:
+/// - ExactTranslation: 1.0 (fully correct)
+/// - PartialTranslation: matched_premises / total_premises (partial credit)
+/// - ConclusionOnly: 0.25 (conclusion matched, premises did not)
+/// - NoTranslation: 0.0 (no match)
+///
+/// Then computes Brier score, ECE, overconfidence/underconfidence rates,
+/// and a calibration curve with 5 buckets.
+pub fn compute_confidence_calibration(
+  results: List(AccuracyTestResult),
+) -> ConfidenceCalibration {
+  let total = list.length(results)
 
-  let mean_correct = mean_confidence(correct)
-  let mean_incorrect = mean_confidence(incorrect)
+  case total {
+    0 ->
+      ConfidenceCalibration(
+        brier_score: 0.0,
+        expected_calibration_error: 0.0,
+        overconfidence_rate: 0.0,
+        underconfidence_rate: 0.0,
+        calibration_curve: [],
+        total_samples: 0,
+      )
+    _ -> {
+      // Score each result by translation match level
+      let scored_results =
+        list.map(results, fn(r) {
+          let correctness = translation_match_score(r.translation_match)
+          #(r.confidence, correctness)
+        })
 
-  // Higher difference means better correlation
-  mean_correct -. mean_incorrect
+      // Brier score: 1/N * Σ(confidence_i - correct_i)²
+      let brier_score = compute_brier_score(scored_results)
+
+      // Calibration curve with 5 buckets
+      let calibration_curve = compute_calibration_curve(scored_results)
+
+      // ECE: weighted average of |mean_confidence - observed_accuracy| per bucket
+      let expected_calibration_error = compute_ece(calibration_curve, total)
+
+      // Overconfidence: high confidence (>0.8) but incorrect
+      let overconfidence_rate = compute_overconfidence_rate(scored_results)
+
+      // Underconfidence: low confidence (<0.5) but correct
+      let underconfidence_rate = compute_underconfidence_rate(scored_results)
+
+      ConfidenceCalibration(
+        brier_score: brier_score,
+        expected_calibration_error: expected_calibration_error,
+        overconfidence_rate: overconfidence_rate,
+        underconfidence_rate: underconfidence_rate,
+        calibration_curve: calibration_curve,
+        total_samples: total,
+      )
+    }
+  }
 }
 
-/// Calculate mean confidence
-fn mean_confidence(results: List(AccuracyTestResult)) -> Float {
-  case results {
-    [] -> 0.0
+/// Convert a TranslationMatch to a continuous correctness score [0, 1].
+///
+/// This includes all match levels rather than just exact/none:
+/// - ExactTranslation → 1.0
+/// - PartialTranslation → matched_premises / total_premises
+/// - ConclusionOnly → 0.25
+/// - NoTranslation → 0.0
+pub fn translation_match_score(match_level: TranslationMatch) -> Float {
+  case match_level {
+    ExactTranslation -> 1.0
+    PartialTranslation(matched, total) ->
+      case total {
+        0 -> 0.0
+        _ -> int.to_float(matched) /. int.to_float(total)
+      }
+    ConclusionOnly -> 0.25
+    NoTranslation -> 0.0
+  }
+}
+
+/// Compute the Brier score: 1/N * Σ(confidence_i - correct_i)²
+///
+/// Measures the mean squared error between predicted confidence and
+/// actual correctness. Lower is better (0.0 = perfect calibration).
+fn compute_brier_score(scored_results: List(#(Float, Float))) -> Float {
+  let total = list.length(scored_results)
+  case total {
+    0 -> 0.0
     _ -> {
-      let sum = list.fold(results, 0.0, fn(acc, r) { acc +. r.confidence })
-      sum /. int.to_float(list.length(results))
+      let sum_squared_error =
+        list.fold(scored_results, 0.0, fn(acc, pair) {
+          let #(confidence, correctness) = pair
+          let error = confidence -. correctness
+          acc +. error *. error
+        })
+      sum_squared_error /. int.to_float(total)
+    }
+  }
+}
+
+/// Compute the calibration curve by binning results into 5 confidence buckets.
+///
+/// Buckets: [0.0-0.2), [0.2-0.4), [0.4-0.6), [0.6-0.8), [0.8-1.0]
+/// For each bucket, reports mean confidence and observed accuracy.
+fn compute_calibration_curve(
+  scored_results: List(#(Float, Float)),
+) -> List(CalibrationBucket) {
+  let bucket_boundaries = [
+    #("0.0-0.2", 0.0, 0.2),
+    #("0.2-0.4", 0.2, 0.4),
+    #("0.4-0.6", 0.4, 0.6),
+    #("0.6-0.8", 0.6, 0.8),
+    #("0.8-1.0", 0.8, 1.01),
+  ]
+
+  bucket_boundaries
+  |> list.filter_map(fn(bucket_def) {
+    let #(label, lower, upper) = bucket_def
+
+    let bucket_results =
+      list.filter(scored_results, fn(pair) {
+        let #(confidence, _) = pair
+        confidence >=. lower && confidence <. upper
+      })
+
+    case list.length(bucket_results) {
+      0 -> Error(Nil)
+      bucket_count -> {
+        let mean_conf =
+          list.fold(bucket_results, 0.0, fn(acc, pair) {
+            let #(confidence, _) = pair
+            acc +. confidence
+          })
+          /. int.to_float(bucket_count)
+
+        let observed_acc =
+          list.fold(bucket_results, 0.0, fn(acc, pair) {
+            let #(_, correctness) = pair
+            acc +. correctness
+          })
+          /. int.to_float(bucket_count)
+
+        Ok(CalibrationBucket(
+          label: label,
+          mean_confidence: mean_conf,
+          observed_accuracy: observed_acc,
+          count: bucket_count,
+        ))
+      }
+    }
+  })
+}
+
+/// Compute Expected Calibration Error (ECE) from calibration curve.
+///
+/// ECE = Σ (bucket_count / total) * |mean_confidence - observed_accuracy|
+/// Weighted average of absolute calibration gap per bucket.
+fn compute_ece(calibration_curve: List(CalibrationBucket), total: Int) -> Float {
+  case total {
+    0 -> 0.0
+    _ ->
+      list.fold(calibration_curve, 0.0, fn(acc, bucket) {
+        let weight = int.to_float(bucket.count) /. int.to_float(total)
+        let gap =
+          float.absolute_value(
+            bucket.mean_confidence -. bucket.observed_accuracy,
+          )
+        acc +. weight *. gap
+      })
+  }
+}
+
+/// Compute overconfidence rate: fraction of high-confidence results (>0.8)
+/// that are incorrect (correctness < 0.5).
+fn compute_overconfidence_rate(scored_results: List(#(Float, Float))) -> Float {
+  let high_confidence_results =
+    list.filter(scored_results, fn(pair) {
+      let #(confidence, _) = pair
+      confidence >. 0.8
+    })
+
+  case list.length(high_confidence_results) {
+    0 -> 0.0
+    high_count -> {
+      let incorrect_count =
+        list.count(high_confidence_results, fn(pair) {
+          let #(_, correctness) = pair
+          correctness <. 0.5
+        })
+      int.to_float(incorrect_count) /. int.to_float(high_count)
+    }
+  }
+}
+
+/// Compute underconfidence rate: fraction of low-confidence results (<0.5)
+/// that are actually correct (correctness >= 0.5).
+fn compute_underconfidence_rate(scored_results: List(#(Float, Float))) -> Float {
+  let low_confidence_results =
+    list.filter(scored_results, fn(pair) {
+      let #(confidence, _) = pair
+      confidence <. 0.5
+    })
+
+  case list.length(low_confidence_results) {
+    0 -> 0.0
+    low_count -> {
+      let correct_count =
+        list.count(low_confidence_results, fn(pair) {
+          let #(_, correctness) = pair
+          correctness >=. 0.5
+        })
+      int.to_float(correct_count) /. int.to_float(low_count)
     }
   }
 }

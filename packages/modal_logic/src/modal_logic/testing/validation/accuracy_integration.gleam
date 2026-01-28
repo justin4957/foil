@@ -11,10 +11,11 @@ import gleam/string
 import modal_logic/proposition.{type Proposition, K}
 import modal_logic/rules/rule_store.{type RuleStore}
 import modal_logic/testing/accuracy/accuracy_tests.{
-  type AccuracyResults, type EndToEndMetrics, type LogicDetectionMetrics,
-  type OverallMetrics, type TranslationMetrics, type ValidationMetrics,
-  AccuracyResults, EndToEndMetrics, LogicDetectionMetrics, OverallMetrics,
-  TranslationMetrics, ValidationMetrics,
+  type AccuracyResults, type ConfidenceCalibration, type EndToEndMetrics,
+  type LogicDetectionMetrics, type OverallMetrics, type TranslationMetrics,
+  type ValidationMetrics, AccuracyResults, ConfidenceCalibration,
+  EndToEndMetrics, LogicDetectionMetrics, OverallMetrics, TranslationMetrics,
+  ValidationMetrics,
 }
 import modal_logic/testing/fixtures/fixtures.{type TestFixture, TestFixture}
 import modal_logic/testing/test_config.{
@@ -85,7 +86,14 @@ pub fn convert_to_accuracy_metrics(
       partial_matches: 0,
       no_matches: incorrect,
       avg_proposition_match: result.soundness_assessment.score,
-      confidence_correlation: result.soundness_assessment.score,
+      confidence_calibration: ConfidenceCalibration(
+        brier_score: 0.0,
+        expected_calibration_error: 0.0,
+        overconfidence_rate: 0.0,
+        underconfidence_rate: 0.0,
+        calibration_curve: [],
+        total_samples: total,
+      ),
     )
 
   // Logic detection metrics - all philosophical arguments have known systems
